@@ -1,0 +1,41 @@
+chandigarh-safesim/
+│
+├── app/
+│   ├── page.tsx                  # Main dashboard
+│   ├── layout.tsx
+│   ├── globals.css
+│   │
+│   └── api/
+│       ├── simulate/
+│       │   └── route.ts          # Runs simulation
+│       │
+│       └── ai/
+│           └── route.ts          # Google AI analysis
+│
+├── components/
+│   ├── SafetyMap.tsx             # Chandigarh map
+│   ├── ScenarioPanel.tsx         # Select scenario
+│   ├── SimulationResult.tsx      # Risk + statistics
+│   └── AIReport.tsx              # AI recommendation
+│
+├── lib/
+│   ├── simulator.ts              # Main simulation logic
+│   ├── routing.ts                # Routes / shortest path
+│   ├── riskCalculator.ts         # Risk calculation
+│   └── ai.ts                     # Google AI integration
+│
+├── data/
+│   ├── roads.json                # Chandigarh road data
+│   ├── sectors.json              # Sector information
+│   └── scenarios.json            # Example scenarios
+│
+├── types/
+│   └── simulation.ts             # TypeScript types
+│
+├── public/
+│   └── icons/
+│
+├── .env.local
+├── package.json
+├── README.md
+└── tsconfig.json
