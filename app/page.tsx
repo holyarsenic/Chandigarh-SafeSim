@@ -46,7 +46,7 @@ const SCENARIOS = [
     name: "Major Fire",
     description: "Explore a fire-related safety scenario",
     icon: Flame,
-    status: "Coming soon",
+    status: "Available",
   },
   {
     id: "earthquake",
@@ -83,9 +83,39 @@ type ApiResponse = {
 function getFallbackRecommendations(
   building: SelectedBuilding | null,
   radius: number,
-  affectedCount: number
+  affectedCount: number,
+  scenario: string = "building-collapse"
 ): GeminiRecommendations {
   const buildingName = building?.name || "the selected building";
+
+  if (scenario === "major-fire") {
+    return {
+      summary:
+        `The Major Fire simulation selected ${buildingName} and identified ${affectedCount} nearby building footprints within the illustrative ${radius} m zone. This does not predict fire spread or confirm damage.`,
+      precautions: [
+        {
+          title: "Avoid fire and smoke",
+          description:
+            "Move away from danger and avoid breathing smoke. Never enter a burning building.",
+        },
+        {
+          title: "Raise the alarm",
+          description:
+            "Contact emergency services and share the location if a real fire occurs.",
+        },
+        {
+          title: "Use a safe exit",
+          description:
+            "Follow marked exits, avoid lifts during a fire, and do not re-enter the building.",
+        },
+      ],
+      nextSteps: [
+        "For a real emergency in India, call 112.",
+        "Move to a safe location and follow emergency responders.",
+        "Do not return until authorities confirm the area is safe.",
+      ],
+    };
+  }
 
   return {
     summary: building
@@ -141,15 +171,13 @@ export default function Home() {
 
   const radius = RADII[severity];
 
-  function changeScenario(nextScenario: string) {
-    setScenario(nextScenario);
-
-    if (nextScenario !== "building-collapse") {
-      setSelectedBuilding(null);
-      setAiRecommendations(null);
-      setAiError(null);
-      setAiLoading(false);
-    }
+  function changeScenario(nextScenario: string) { 
+    setScenario(nextScenario); 
+    setSelectedBuilding(null); 
+    setAiRecommendations(null); 
+    setAiError(null); 
+    setAiLoading(false); 
+    setRetryCount(0); 
   }
 
   function clearSimulation() {
@@ -161,7 +189,10 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (scenario !== "building-collapse" || !selectedBuilding) {
+    if (
+      !["building-collapse", "major-fire"].includes(scenario) ||
+      !selectedBuilding
+    ) {
       return;
     }
 
@@ -180,6 +211,7 @@ export default function Home() {
           },
           signal: controller.signal,
           body: JSON.stringify({
+            scenario,
             buildingName:
               selectedBuilding?.name || "Unnamed building",
             buildingType:
@@ -270,7 +302,7 @@ export default function Home() {
       : null);
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-slate-50 text-slate-900">
+    <main className="flex min-h-screen flex-col bg-slate-50 text-slate-900 lg:h-screen lg:overflow-hidden">
       {/* Header */}
       <header className="z-10 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6">
         <div className="flex items-center gap-3">
@@ -785,7 +817,7 @@ export default function Home() {
         </aside>
 
         {/* Map panel */}
-        <section className="flex min-h-105 min-w-0 flex-1 flex-col bg-slate-100">
+        <section className="flex h-[65vh] min-h-112 min-w-0 shrink-0 flex-col bg-slate-100 lg:h-auto lg:min-h-0 lg:flex-1">
           <div className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
             <div>
               <div className="flex items-center gap-2">
