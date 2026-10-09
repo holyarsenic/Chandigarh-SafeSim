@@ -115,6 +115,9 @@ importers:
       '@turf/turf':
         specifier: ^7.4.0
         version: 7.4.0
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
       lucide-react:
         specifier: ^1.52.0
         version: 1.52.0(@types/react@19.3.0)(react@19.3.0)
@@ -140,9 +143,6 @@ importers:
       '@tailwindcss/turbopack':
         specifier: ^4
         version: 4.3.3
-      '@types/geojson':
-        specifier: ^7946.0.16
-        version: 7946.0.16
       '@types/node':
         specifier: ^20
         version: 20.19.43

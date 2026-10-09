@@ -248,6 +248,7 @@ export default function Home() {
     };
   }, [
     scenario,
+    selectedBuilding,
     selectedBuilding?.id,
     selectedBuilding?.name,
     selectedBuilding?.type,
@@ -296,7 +297,7 @@ export default function Home() {
       {/* Main workspace */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Sidebar */}
-        <aside className="w-full shrink-0 overflow-y-auto border-b border-slate-200 bg-white p-4 sm:p-5 lg:w-[380px] lg:border-b-0 lg:border-r">
+        <aside className="w-full shrink-0 overflow-y-auto border-b border-slate-200 bg-white p-4 sm:p-5 lg:w-95 lg:border-b-0 lg:border-r">
           <div className="mb-5">
             <div className="mb-1 flex items-center gap-2">
               <Target size={17} className="text-blue-600" />
@@ -486,7 +487,7 @@ export default function Home() {
                   <p className="text-xs text-slate-500">
                     Selected building
                   </p>
-                  <p className="mt-1 break-words text-sm font-semibold">
+                  <p className="mt-1 wrap-break-word text-sm font-semibold">
                     {selectedBuilding.name || "Unnamed building"}
                   </p>
 
@@ -533,7 +534,7 @@ export default function Home() {
                           className="flex items-start justify-between gap-2 rounded-lg border border-slate-100 p-2"
                         >
                           <div className="min-w-0">
-                            <p className="break-words text-xs font-medium text-slate-700">
+                            <p className="wrap-break-word text-xs font-medium text-slate-700">
                               {building.name || "Unnamed building"}
                             </p>
                             <p className="mt-1 text-[10px] text-slate-500">
@@ -607,7 +608,7 @@ export default function Home() {
                       <p className="text-xs font-semibold text-red-800">
                         Gemini recommendations unavailable
                       </p>
-                      <p className="mt-1 break-words text-[11px] leading-5 text-red-700">
+                      <p className="mt-1 wrap-break-word text-[11px] leading-5 text-red-700">
                         {aiError}
                       </p>
                     </div>
@@ -784,7 +785,7 @@ export default function Home() {
         </aside>
 
         {/* Map panel */}
-        <section className="flex min-h-[420px] min-w-0 flex-1 flex-col bg-slate-100">
+        <section className="flex min-h-105 min-w-0 flex-1 flex-col bg-slate-100">
           <div className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
             <div>
               <div className="flex items-center gap-2">

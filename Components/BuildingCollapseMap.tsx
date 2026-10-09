@@ -312,6 +312,9 @@ export default function BuildingCollapseMap({
     callbackRef.current = onBuildingSelect;
   }, [onBuildingSelect]);
 
+  const selectedLocationLongitude = selectedLocation?.[0];
+  const selectedLocationLatitude = selectedLocation?.[1];
+
   useEffect(() => {
     selectedLocationRef.current = selectedLocation;
     radiusRef.current = radius;
@@ -352,7 +355,12 @@ export default function BuildingCollapseMap({
     }
 
     refreshRef.current?.();
-  }, [radius, selectedLocation?.[0], selectedLocation?.[1]]);
+  }, [
+    radius,
+    selectedLocation,
+    selectedLocationLongitude,
+    selectedLocationLatitude,
+  ]);
 
   const showCity = useCallback(() => {
     mapRef.current?.flyTo({

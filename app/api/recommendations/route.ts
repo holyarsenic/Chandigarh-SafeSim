@@ -77,52 +77,58 @@ function getErrorStatus(error: unknown): number | null {
   return Number.isFinite(status) ? status : null;
 }
 
-async function generateWithRetry(
-  ai: GoogleGenAI,
-  prompt: string,
-): Promise<string> {
-  const maxAttempts = 3;
+  async function generateWithRetry(
+      ai: GoogleGenAI,
+      prompt: string,
+    ): Promise<string> {
+      const maxAttempts = 3;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.3,
-        },
-      });
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model: "gemini-3.8-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json",
+              temperature: 0.3,
+            },
+          });
 
-      if (!response.text) {
-        throw new Error("Gemini returned an empty response.");
+          if (!response.text) {
+            throw new Error("Gemini returned an empty response.");
+          }
+
+          return response.text;
+        } catch (error) {
+          const status = getErrorStatus(error);
+
+          // Do not retry quota/rate-limit errors.
+          // The outer catch will return fallback recommendations.
+          if (status === 429) {
+            throw error;
+          }
+
+          const retryable =
+            status === 500 ||
+            status === 502 ||
+            status === 503 ||
+            status === 504;
+
+          if (!retryable || attempt === maxAttempts - 1) {
+            throw error;
+          }
+
+          console.warn(
+            `Gemini request failed with status ${status}. ` +
+              `Retrying (${attempt + 1}/${maxAttempts - 1})...`,
+          );
+
+          await wait(1000 * 2 ** attempt);
+        }
       }
 
-      return response.text;
-    } catch (error) {
-      const status = getErrorStatus(error);
-      const retryable =
-        status === 429 ||
-        status === 500 ||
-        status === 502 ||
-        status === 503 ||
-        status === 504;
-
-      if (!retryable || attempt === maxAttempts - 1) {
-        throw error;
-      }
-
-      console.warn(
-        `Gemini request failed with status ${status}. ` +
-          `Retrying (${attempt + 1}/${maxAttempts - 1})...`,
-      );
-
-      await wait(1000 * 2 ** attempt);
-    }
+      throw new Error("Gemini generation failed.");
   }
-
-  throw new Error("Gemini generation failed.");
-}
 
 export async function POST(request: Request) {
   let body: unknown;
