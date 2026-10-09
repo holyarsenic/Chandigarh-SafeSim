@@ -9,12 +9,19 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/genai": "^2.27.0",
+    "@turf/turf": "^7.4.0",
+    "lucide-react": "^1.52.0",
+    "maplibre-gl": "^6.13.0",
     "next": "16.4.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "sonner": "^2.0.8",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
+    "@types/geojson": "^7946.0.16",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
