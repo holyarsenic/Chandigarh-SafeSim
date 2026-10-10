@@ -668,23 +668,35 @@ export default function BuildingCollapseMap({
         });
 
         const response = await fetch("/api/buildings");
-
-        if (!response.ok) {
-          throw new Error(
-            `Buildings API returned ${response.status}. Check /api/buildings.`
-          );
-        }
-
-        const result: {
+        const text = await response.text();
+        let result: {
           success?: boolean;
           data?: FeatureCollection;
           error?: string;
-        } = await response.json();
+          details?: string;
+        } = {};
 
-        if (!result.success || !result.data?.features) {
-          throw new Error(
-            result.error || "The API returned no building features."
-          );
+        try {
+          result = text ? JSON.parse(text) : {};
+        } catch {
+          if (!response.ok) {
+            throw new Error(
+              `Buildings API returned ${response.status} (invalid response). Check /api/buildings.`
+            );
+          }
+          throw new Error("Buildings API returned invalid JSON.");
+        }
+
+        if (!response.ok || !result.success) {
+          const message =
+            result.error ||
+            result.details ||
+            `Buildings API returned ${response.status}. Check /api/buildings.`;
+          throw new Error(message);
+        }
+
+        if (!result.data?.features) {
+          throw new Error("The API returned no building features.");
         }
 
         const features = result.data.features
