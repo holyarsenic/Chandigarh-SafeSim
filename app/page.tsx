@@ -24,7 +24,7 @@ import {
 
 import BuildingCollapseMap, {
   type SelectedBuilding,
-} from "@/Components/BuildingCollapseMap";
+} from "@/components/BuildingCollapseMap";
 
 const SCENARIOS = [
   {
