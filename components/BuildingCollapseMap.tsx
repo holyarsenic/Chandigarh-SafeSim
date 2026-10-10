@@ -480,6 +480,37 @@ export default function BuildingCollapseMap({
           },
         });
 
+        // ADDED: Building labels
+        map.addLayer({
+          id: "building-labels",
+          type: "symbol",
+          source: "buildings-source",
+          minzoom: 14,
+          layout: {
+            "text-field": [
+              "coalesce",
+              ["get", "name"],
+              ["concat", "Building #", ["to-string", ["get", "id"]]],
+            ],
+            "text-size": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              14, 9,
+              18, 12,
+            ],
+            "text-anchor": "center",
+            "text-max-width": 10,
+            "text-allow-overlap": false,
+            "text-ignore-placement": false,
+          },
+          paint: {
+            "text-color": "#ffffff",
+            "text-halo-color": "#0f172a",
+            "text-halo-width": 1.5,
+          },
+        });
+
         map.addLayer({
           id: "affected-buildings-outline",
           type: "line",
@@ -563,7 +594,6 @@ export default function BuildingCollapseMap({
             )
             .sort((a, b) => a.distanceMeters - b.distanceMeters);
 
-          // Always construct the complete, normalized data shape.
           const details: SelectedBuilding = {
             id: selectedId,
             name: String(selected.properties?.name || "Unnamed building"),
@@ -668,35 +698,23 @@ export default function BuildingCollapseMap({
         });
 
         const response = await fetch("/api/buildings");
-        const text = await response.text();
-        let result: {
+
+        if (!response.ok) {
+          throw new Error(
+            `Buildings API returned ${response.status}. Check /api/buildings.`
+          );
+        }
+
+        const result: {
           success?: boolean;
           data?: FeatureCollection;
           error?: string;
-          details?: string;
-        } = {};
+        } = await response.json();
 
-        try {
-          result = text ? JSON.parse(text) : {};
-        } catch {
-          if (!response.ok) {
-            throw new Error(
-              `Buildings API returned ${response.status} (invalid response). Check /api/buildings.`
-            );
-          }
-          throw new Error("Buildings API returned invalid JSON.");
-        }
-
-        if (!response.ok || !result.success) {
-          const message =
-            result.error ||
-            result.details ||
-            `Buildings API returned ${response.status}. Check /api/buildings.`;
-          throw new Error(message);
-        }
-
-        if (!result.data?.features) {
-          throw new Error("The API returned no building features.");
+        if (!result.success || !result.data?.features) {
+          throw new Error(
+            result.error || "The API returned no building features."
+          );
         }
 
         const features = result.data.features

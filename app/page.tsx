@@ -21,6 +21,7 @@ import {
   Sparkles,
   RefreshCw,
 } from "lucide-react";
+import Image from "next/image";
 
 import BuildingCollapseMap, {
   type SelectedBuilding,
@@ -307,7 +308,7 @@ export default function Home() {
       <header className="z-10 flex h-16 shrink-0 items-center justify-between border-b border-background bg-foreground px-4 md:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-background text-white">
-            <ShieldCheck size={23} />
+            <Image src="/favicon/favicon-96x96.png" alt="SafeSim" height={23} width={23} className="h-full w-full text-white"/>
           </div>
 
           <div>
@@ -318,12 +319,28 @@ export default function Home() {
               AI-powered urban safety simulation
             </p>
           </div>
-        </div>
+        </div>                 
+        
+            
+      <a
+        href="https://github.com/holyarsenic/Chandigarh-SafeSim"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="View Chandigarh-SafeSim on GitHub"
+        className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-800"
+      >
+        <Image
+          src="https://github.githubassets.com/favicons/favicon.svg"
+          alt="GitHub"
+          width={20}
+          height={20}
+          unoptimized
+          className="brightness-0 invert"/>
 
-        <div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 sm:flex">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          Prototype environment
-        </div>
+        <span>GitHub</span>
+      </a>
+
+
       </header>
 
       {/* Main workspace */}

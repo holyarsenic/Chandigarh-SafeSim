@@ -1,7 +1,9 @@
-
 import { NextResponse } from "next/server";
+export const maxDuration = 60;
 
-const BOUNDS = "30.68,76.70,30.79,76.86";
+// Wider Chandigarh-area bounding box:
+// south, west, north, east
+const BOUNDS = "30.60,76.65,30.82,76.90";
 
 const OVERPASS_SERVERS = [
   "https://overpass.kumi.systems/api/interpreter",
@@ -16,25 +18,29 @@ type OverpassElement = {
   tags?: Record<string, string>;
 };
 
+type BuildingFeature = {
+  type: "Feature";
+  id: number;
+  properties: {
+    id: number;
+    name: string;
+    buildingType: string;
+    levels: number | null;
+    address: string | null;
+    hasRealName: boolean;
+  };
+  geometry: {
+    type: "Polygon";
+    coordinates: [number, number][][];
+  };
+};
+
 type BuildingsResponse = {
   success: boolean;
   count: number;
   data: {
     type: "FeatureCollection";
-    features: {
-      type: "Feature";
-      id: number;
-      properties: {
-        id: number;
-        name: string;
-        buildingType: string;
-        levels: number | null;
-      };
-      geometry: {
-        type: "Polygon";
-        coordinates: [number, number][][];
-      };
-    }[];
+    features: BuildingFeature[];
   };
 };
 
@@ -43,54 +49,102 @@ let cachedData: {
   data: BuildingsResponse;
 } | null = null;
 
-function generateFallbackBuildings(): BuildingsResponse["data"]["features"] {
-  const [south, west, north, east] = BOUNDS.split(",").map(Number);
-  const latStep = 0.0018;
-  const lngStep = 0.0022;
-  const width = 0.0006;
-  const height = 0.00045;
-  const features: BuildingsResponse["data"]["features"] = [];
-  const buildingTypes = ["residential", "commercial", "school", "hospital", "apartments", "yes"];
-  let id = 10_000_000;
+function getBuildingName(
+  tags: Record<string, string>,
+  id: number
+): {
+  name: string;
+  address: string | null;
+  hasRealName: boolean;
+} {
+  const realName =
+    tags.name?.trim() ||
+    tags["addr:housename"]?.trim() ||
+    tags["official_name"]?.trim() ||
+    tags["short_name"]?.trim();
 
-  for (let lat = south + 0.005; lat < north - 0.005; lat += latStep) {
-    for (let lng = west + 0.005; lng < east - 0.005; lng += lngStep) {
-      const jitterLat = (Math.sin(id * 13.37) * 0.5 + 0.5) * (latStep * 0.35);
-      const jitterLng = (Math.cos(id * 7.77) * 0.5 + 0.5) * (lngStep * 0.35);
-      const lat0 = lat + jitterLat;
-      const lng0 = lng + jitterLng;
-      const w = width * (0.7 + ((id * 31) % 100) / 300);
-      const h = height * (0.7 + ((id * 17) % 100) / 300);
-      const coordinates: [number, number][] = [
-        [lng0, lat0],
-        [lng0 + w, lat0],
-        [lng0 + w, lat0 + h],
-        [lng0, lat0 + h],
-        [lng0, lat0],
-      ];
-      const typeIndex = id % buildingTypes.length;
-      const buildingType = buildingTypes[typeIndex];
-      const levelsSeed = id % 10;
-      const levels = levelsSeed < 3 ? null : levelsSeed < 8 ? levelsSeed : levelsSeed - 2;
-      features.push({
-        type: "Feature",
-        id,
-        properties: {
-          id,
-          name: `Building ${id.toString().slice(-5)}`,
-          buildingType,
-          levels: levels === null ? null : levels,
-        },
-        geometry: {
-          type: "Polygon",
-          coordinates: [coordinates],
-        },
-      });
-      id++;
-    }
+  const houseNumber = tags["addr:housenumber"]?.trim();
+  const street = tags["addr:street"]?.trim();
+  const place = tags["addr:place"]?.trim();
+
+  const address =
+    [houseNumber, street || place].filter(Boolean).join(", ") ||
+    tags["addr:full"]?.trim() ||
+    null;
+
+  if (realName) {
+    return {
+      name: realName,
+      address,
+      hasRealName: true,
+    };
   }
 
-  return features;
+  if (address) {
+    return {
+      name: address,
+      address,
+      hasRealName: false,
+    };
+  }
+
+  // This is a generated label, not an actual registered building name.
+  return {
+    name: `Building #${id}`,
+    address: null,
+    hasRealName: false,
+  };
+}
+
+function toBuildingFeature(
+  element: OverpassElement
+): BuildingFeature | null {
+  const geometry = element.geometry;
+
+  if (!geometry || geometry.length < 3) {
+    return null;
+  }
+
+  const coordinates: [number, number][] = geometry.map((point) => [
+    point.lon,
+    point.lat,
+  ]);
+
+  const first = coordinates[0];
+  const last = coordinates[coordinates.length - 1];
+
+  // GeoJSON polygon rings must be closed.
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    coordinates.push([first[0], first[1]]);
+  }
+
+  if (coordinates.length < 4) {
+    return null;
+  }
+
+  const tags = element.tags ?? {};
+  const buildingName = getBuildingName(tags, element.id);
+  const rawLevels = Number(tags["building:levels"]);
+
+  return {
+    type: "Feature",
+    id: element.id,
+    properties: {
+      id: element.id,
+      name: buildingName.name,
+      buildingType: tags.building ?? "yes",
+      levels:
+        Number.isFinite(rawLevels) && rawLevels > 0
+          ? rawLevels
+          : null,
+      address: buildingName.address,
+      hasRealName: buildingName.hasRealName,
+    },
+    geometry: {
+      type: "Polygon",
+      coordinates: [coordinates],
+    },
+  };
 }
 
 export async function GET() {
@@ -98,78 +152,49 @@ export async function GET() {
     return NextResponse.json(cachedData.data);
   }
 
+  const [south, west, north, east] = BOUNDS.split(",").map(Number);
+
   const query = `
-    [out:json][timeout:40];
-    way["building"](${BOUNDS});
+    [out:json][timeout:45];
+    way["building"](${south},${west},${north},${east});
     out body geom;
   `;
 
-  let lastError = "All building data servers failed";
+  const errors: string[] = [];
 
   for (const server of OVERPASS_SERVERS) {
     try {
-      console.log("Trying buildings server:", server);
+      console.log("Fetching building footprints from:", server);
 
       const response = await fetch(server, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "ChandigarhSafeSim/0.1",
+          "User-Agent": "ChandigarhSafeSim/1.0",
         },
         body: new URLSearchParams({ data: query }).toString(),
-        signal: AbortSignal.timeout(45000),
+        signal: AbortSignal.timeout(50_000),
         cache: "no-store",
       });
 
       if (!response.ok) {
-        lastError = `${server} returned HTTP ${response.status}`;
-        console.error("Buildings server failed:", lastError);
+        errors.push(`${server}: HTTP ${response.status}`);
         continue;
       }
 
-      const result: { elements?: OverpassElement[] } =
-        await response.json();
+      const result = (await response.json()) as {
+        elements?: OverpassElement[];
+      };
 
       const features = (result.elements ?? [])
+        .filter((element) => element.type === "way")
+        .map(toBuildingFeature)
         .filter(
-          (element) =>
-            element.type === "way" &&
-            Array.isArray(element.geometry) &&
-            element.geometry.length >= 3
-        )
-        .map((element) => {
-          const coordinates: [number, number][] =
-            element.geometry!.map((point) => [
-              point.lon,
-              point.lat,
-            ]);
-
-          const first = coordinates[0];
-          const last = coordinates[coordinates.length - 1];
-
-          if (first[0] !== last[0] || first[1] !== last[1]) {
-            coordinates.push([...first]);
-          }
-
-          return {
-            type: "Feature" as const,
-            id: element.id,
-            properties: {
-              id: element.id,
-              name: element.tags?.name ?? "Unnamed building",
-              buildingType: element.tags?.building ?? "yes",
-              levels: Number(element.tags?.["building:levels"]) || null,
-            },
-            geometry: {
-              type: "Polygon" as const,
-              coordinates: [coordinates],
-            },
-          };
-        });
+          (feature): feature is BuildingFeature => feature !== null
+        );
 
       if (features.length === 0) {
-        lastError = `${server} returned an empty building dataset`;
-        console.error("Buildings server empty response:", lastError);
+        errors.push(`${server}: no building footprints returned`);
         continue;
       }
 
@@ -187,33 +212,25 @@ export async function GET() {
         expiresAt: Date.now() + 30 * 60 * 1000,
       };
 
-      console.log(`Loaded ${features.length} buildings successfully.`);
+      console.log(`Loaded ${features.length} building footprints.`);
+
       return NextResponse.json(data);
     } catch (error) {
-      lastError =
+      const message =
         error instanceof Error ? error.message : String(error);
 
-      console.error(`Buildings server failed (${server}):`, lastError);
+      errors.push(`${server}: ${message}`);
+      console.error("Building data request failed:", server, message);
     }
   }
 
-  const fallbackFeatures = generateFallbackBuildings();
-  const fallbackData: BuildingsResponse = {
-    success: true,
-    count: fallbackFeatures.length,
-    data: {
-      type: "FeatureCollection",
-      features: fallbackFeatures,
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        "Could not load building data from any Overpass server. Please try again later.",
+      details: errors,
     },
-  };
-
-  cachedData = {
-    data: fallbackData,
-    expiresAt: Date.now() + 30 * 60 * 1000,
-  };
-
-  console.warn(
-    `All Overpass servers failed (${lastError}). Serving ${fallbackFeatures.length} fallback buildings.`
+    { status: 502 }
   );
-  return NextResponse.json(fallbackData, { status: 200 });
 }
