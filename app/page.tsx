@@ -302,11 +302,11 @@ export default function Home() {
       : null);
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-50 text-slate-900 lg:h-screen lg:overflow-hidden">
+    <main className="flex min-h-screen flex-col text-slate-900 lg:h-screen lg:overflow-hidden">
       {/* Header */}
-      <header className="z-10 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6">
+      <header className="z-10 flex h-16 shrink-0 items-center justify-between border-b border-background bg-foreground px-4 md:px-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-background text-white">
             <ShieldCheck size={23} />
           </div>
 
@@ -329,10 +329,10 @@ export default function Home() {
       {/* Main workspace */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Sidebar */}
-        <aside className="w-full shrink-0 overflow-y-auto border-b border-slate-200 bg-white p-4 sm:p-5 lg:w-95 lg:border-b-0 lg:border-r">
+        <aside className="w-full shrink-0 overflow-y-auto border-b border-slate-200 bg-foreground p-4 sm:p-5 lg:w-95 lg:border-b-0 lg:border-r">
           <div className="mb-5">
             <div className="mb-1 flex items-center gap-2">
-              <Target size={17} className="text-blue-600" />
+              <Target size={17} className="text-background" />
               <h2 className="text-sm font-bold">
                 Simulation scenarios
               </h2>
@@ -366,7 +366,7 @@ export default function Home() {
                     <div
                       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
                         isActive
-                          ? "bg-blue-600 text-white"
+                          ? "bg-background text-white"
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >
@@ -402,7 +402,7 @@ export default function Home() {
           {/* Location */}
           <div className="mt-6 rounded-xl border border-slate-200 p-4">
             <div className="mb-3 flex items-center gap-2">
-              <MapPin size={17} className="text-blue-600" />
+              <MapPin size={17} className="text-background" />
               <h3 className="text-sm font-bold">
                 Simulation location
               </h3>
@@ -419,7 +419,7 @@ export default function Home() {
           <div className="mt-4 rounded-xl border border-slate-200 p-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-bold">Current scenario</h3>
-              <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-blue-700">
+              <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-background">
                 Active
               </span>
             </div>
@@ -461,7 +461,7 @@ export default function Home() {
                     onClick={() => setSeverity(level)}
                     className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
                       severity === level
-                        ? "border-blue-600 bg-blue-600 text-white"
+                        ? "border-blue-300 bg-background text-white"
                         : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -817,8 +817,8 @@ export default function Home() {
         </aside>
 
         {/* Map panel */}
-        <section className="flex h-[65vh] min-h-112 min-w-0 shrink-0 flex-col bg-slate-100 lg:h-auto lg:min-h-0 lg:flex-1">
-          <div className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+        <section className="flex h-[65vh] min-h-112 min-w-0 shrink-0 flex-col bg-foreground lg:h-auto lg:min-h-0 lg:flex-1">
+          <div className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-foreground px-4 py-3 sm:px-5">
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold">Simulation map</h2>
@@ -856,7 +856,7 @@ export default function Home() {
             />
           </div>
 
-          <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-4 py-2.5 text-[10px] text-slate-500 sm:px-5">
+          <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-foreground px-4 py-2.5 text-[10px] text-slate-500 sm:px-5">
             <span className="flex items-center gap-1.5">
               <ShieldCheck size={13} className="text-emerald-600" />
               Chandigarh SafeSim · Experimental prototype
