@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -26,6 +25,7 @@ import Image from "next/image";
 import BuildingCollapseMap, {
   type SelectedBuilding,
 } from "@/components/BuildingCollapseMap";
+import EmergencyServicesPanel from "@/components/EmergencyServicesPanel";
 
 const SCENARIOS = [
   {
@@ -56,15 +56,17 @@ const SCENARIOS = [
     icon: Activity,
     status: "Coming soon",
   },
-];
+] as const;
 
 const RADII = {
   Low: 75,
   Medium: 150,
   High: 250,
-};
+} as const;
 
 type Severity = keyof typeof RADII;
+type SupportedScenario = "building-collapse" | "major-fire";
+type RecommendationProvider = "gemini" | "built-in";
 
 type GeminiRecommendations = {
   summary: string;
@@ -79,20 +81,33 @@ type ApiResponse = {
   success?: boolean;
   data?: GeminiRecommendations;
   error?: string;
+  provider?: RecommendationProvider;
+  fallback?: boolean;
 };
+
+function isSupportedScenario(
+  scenario: string,
+): scenario is SupportedScenario {
+  return (
+    scenario === "building-collapse" ||
+    scenario === "major-fire"
+  );
+}
 
 function getFallbackRecommendations(
   building: SelectedBuilding | null,
   radius: number,
   affectedCount: number,
-  scenario: string = "building-collapse"
+  scenario: SupportedScenario = "building-collapse",
 ): GeminiRecommendations {
-  const buildingName = building?.name || "the selected building";
+  const buildingName =
+    building?.name || "the selected building";
 
   if (scenario === "major-fire") {
     return {
-      summary:
-        `The Major Fire simulation selected ${buildingName} and identified ${affectedCount} nearby building footprints within the illustrative ${radius} m zone. This does not predict fire spread or confirm damage.`,
+      summary: building
+        ? `The Major Fire simulation selected ${buildingName} and identified ${affectedCount} nearby building footprints within the illustrative ${radius} m zone. This does not predict fire spread or confirm damage.`
+        : "Select a building on the map to see fire-related safety guidance.",
       precautions: [
         {
           title: "Avoid fire and smoke",
@@ -120,9 +135,8 @@ function getFallbackRecommendations(
 
   return {
     summary: building
-      ? `The simulation has selected ${buildingName} and identified ${affectedCount} other building${affectedCount === 1 ? "" : "s"} within the illustrative ${radius} m impact zone. This is a geographic scenario, not a structural damage prediction.`
+      ? `The simulation has selected ${buildingName} and identified ${affectedCount} nearby building footprints within the illustrative ${radius} m impact zone. This is a geographic scenario, not a structural damage prediction.`
       : "Select a building on the map to see scenario-specific safety guidance.",
-
     precautions: [
       {
         title: "Keep people away from the area",
@@ -140,7 +154,6 @@ function getFallbackRecommendations(
           "Keep access routes clear and follow instructions from emergency personnel. Do not attempt an untrained rescue in an unstable structure.",
       },
     ],
-
     nextSteps: [
       "Verify the location and circumstances with local authorities.",
       "Ask qualified emergency personnel to assess the actual hazard.",
@@ -150,59 +163,83 @@ function getFallbackRecommendations(
 }
 
 export default function Home() {
-  const [scenario, setScenario] = useState("building-collapse");
-  const [severity, setSeverity] = useState<Severity>("Medium");
+  const [scenario, setScenario] =
+    useState<SupportedScenario>("building-collapse");
+
+  const [severity, setSeverity] =
+    useState<Severity>("Medium");
+
   const [selectedBuilding, setSelectedBuilding] =
     useState<SelectedBuilding | null>(null);
 
+  const [recommendationProvider, setRecommendationProvider] =
+    useState<RecommendationProvider | null>(null);
+
   const [aiRecommendations, setAiRecommendations] =
     useState<GeminiRecommendations | null>(null);
+
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
   const activeScenario =
-    SCENARIOS.find((item) => item.id === scenario) ?? SCENARIOS[0];
+    SCENARIOS.find((item) => item.id === scenario) ??
+    SCENARIOS[0];
 
   const affectedBuildings =
     selectedBuilding?.affectedBuildings ?? [];
 
   const affectedCount =
-    selectedBuilding?.affectedCount ?? affectedBuildings.length;
+    selectedBuilding?.affectedCount ??
+    affectedBuildings.length;
 
   const radius = RADII[severity];
 
-  function changeScenario(nextScenario: string) { 
-    setScenario(nextScenario); 
-    setSelectedBuilding(null); 
-    setAiRecommendations(null); 
-    setAiError(null); 
-    setAiLoading(false); 
-    setRetryCount(0); 
+  function resetRecommendations() {
+    setAiRecommendations(null);
+    setRecommendationProvider(null);
+    setAiError(null);
+    setAiLoading(false);
+  }
+
+  function changeScenario(nextScenario: string) {
+    if (!isSupportedScenario(nextScenario)) {
+      return;
+    }
+
+    setScenario(nextScenario);
+    setSelectedBuilding(null);
+    resetRecommendations();
+    setRetryCount(0);
+  }
+
+  function handleBuildingSelect(
+    building: SelectedBuilding,
+  ) {
+    setSelectedBuilding(building);
+    resetRecommendations();
+    setRetryCount(0);
   }
 
   function clearSimulation() {
     setSelectedBuilding(null);
-    setAiRecommendations(null);
-    setAiError(null);
-    setAiLoading(false);
+    resetRecommendations();
     setRetryCount(0);
   }
 
   useEffect(() => {
-    if (
-      !["building-collapse", "major-fire"].includes(scenario) ||
-      !selectedBuilding
-    ) {
+      if (!selectedBuilding) {
       return;
     }
 
+    const building: SelectedBuilding = selectedBuilding;
     const controller = new AbortController();
 
     async function fetchRecommendations() {
       setAiLoading(true);
       setAiError(null);
       setAiRecommendations(null);
+      setRecommendationProvider(null);
 
       try {
         const response = await fetch("/api/recommendations", {
@@ -214,10 +251,10 @@ export default function Home() {
           body: JSON.stringify({
             scenario,
             buildingName:
-              selectedBuilding?.name || "Unnamed building",
+              building.name || "Unnamed building",
             buildingType:
-              selectedBuilding?.type || "Unknown",
-            levels: selectedBuilding?.levels ?? null,
+              building.type || "Unknown",
+            levels: building.levels ?? null,
             radius,
             affectedCount,
           }),
@@ -228,45 +265,66 @@ export default function Home() {
 
         if (!contentType.includes("application/json")) {
           throw new Error(
-            "The server returned an unexpected response. Check your terminal for API errors."
+            "The server returned an unexpected response. Check your terminal for API errors.",
           );
         }
 
-        const result = (await response.json()) as ApiResponse;
+        const result =
+          (await response.json()) as ApiResponse;
 
-        if (!response.ok || !result.success || !result.data) {
+        if (
+          !response.ok ||
+          !result.success ||
+          !result.data
+        ) {
           throw new Error(
             result.error ||
-              "Could not generate Gemini recommendations."
+              "Could not generate safety recommendations.",
           );
         }
 
         if (
-          !result.data.summary ||
+          typeof result.data.summary !== "string" ||
           !Array.isArray(result.data.precautions) ||
           !Array.isArray(result.data.nextSteps)
         ) {
           throw new Error(
-            "The API returned an unexpected recommendation format."
+            "The API returned an unexpected recommendation format.",
           );
         }
 
+        if (controller.signal.aborted) {
+          return;
+        }
+
         setAiRecommendations(result.data);
-      } catch (error) {
+
+        setRecommendationProvider(
+          result.provider === "gemini" ||
+            result.provider === "built-in"
+            ? result.provider
+            : null,
+        );
+      } catch (error: unknown) {
         if (
-          error instanceof DOMException &&
+          error instanceof Error &&
           error.name === "AbortError"
         ) {
           return;
         }
 
-        if (error instanceof Error) {
-          setAiError(error.message);
-        } else {
-          setAiError(
-            "Something went wrong while generating recommendations."
-          );
+        if (controller.signal.aborted) {
+          return;
         }
+
+        setAiRecommendations(null);
+        setRecommendationProvider(null);
+
+        setAiError(
+          error instanceof Error
+            ? error.message
+            : "Something went wrong while generating recommendations.",
+        );
       } finally {
         if (!controller.signal.aborted) {
           setAiLoading(false);
@@ -282,11 +340,6 @@ export default function Home() {
   }, [
     scenario,
     selectedBuilding,
-    selectedBuilding?.id,
-    selectedBuilding?.name,
-    selectedBuilding?.type,
-    selectedBuilding?.levels,
-    selectedBuilding?.affectedCount,
     radius,
     affectedCount,
     retryCount,
@@ -298,9 +351,18 @@ export default function Home() {
       ? getFallbackRecommendations(
           selectedBuilding,
           radius,
-          affectedCount
+          affectedCount,
+          scenario,
         )
       : null);
+
+  const providerLabel = aiLoading
+    ? "Generating safety guidance..."
+    : recommendationProvider === "gemini"
+      ? "Gemini · Illustrative safety guidance"
+      : recommendationProvider === "built-in"
+        ? "Built-in guidance · Gemini unavailable"
+        : "Illustrative safety guidance";
 
   return (
     <main className="flex min-h-screen flex-col text-slate-900 lg:h-screen lg:overflow-hidden">
@@ -308,7 +370,13 @@ export default function Home() {
       <header className="z-10 flex h-16 shrink-0 items-center justify-between border-b border-background bg-foreground px-4 md:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-background text-white">
-            <Image src="/favicon/favicon-96x96.png" alt="SafeSim" height={23} width={23} className="h-full w-full text-white"/>
+            <Image
+              src="/favicon/favicon-96x96.png"
+              alt="SafeSim"
+              height={23}
+              width={23}
+              className="h-full w-full"
+            />
           </div>
 
           <div>
@@ -319,41 +387,43 @@ export default function Home() {
               AI-powered urban safety simulation
             </p>
           </div>
-        </div>                 
-        
-            
-      <a
-        href="https://github.com/holyarsenic/Chandigarh-SafeSim"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="View Chandigarh-SafeSim on GitHub"
-        className="hidden sm:inline-flex items-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-800"
-      >
-        <Image
-          src="https://github.githubassets.com/favicons/favicon.svg"
-          alt="GitHub"
-          width={20}
-          height={20}
-          unoptimized
-          className="brightness-0 invert"/>
+        </div>
 
-        <span>GitHub</span>
-      </a>
-
-
+        <a
+          href="https://github.com/holyarsenic/Chandigarh-SafeSim"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="View Chandigarh-SafeSim on GitHub"
+          className="hidden items-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-800 sm:inline-flex"
+        >
+          <Image
+            src="https://github.githubassets.com/favicons/favicon.svg"
+            alt="GitHub"
+            width={20}
+            height={20}
+            unoptimized
+            className="brightness-0 invert"
+          />
+          <span>GitHub</span>
+        </a>
       </header>
 
       {/* Main workspace */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Sidebar */}
         <aside className="w-full shrink-0 overflow-y-auto border-b border-slate-200 bg-foreground p-4 sm:p-5 lg:w-95 lg:border-b-0 lg:border-r">
+          {/* Simulation scenarios */}
           <div className="mb-5">
             <div className="mb-1 flex items-center gap-2">
-              <Target size={17} className="text-background" />
+              <Target
+                size={17}
+                className="text-background"
+              />
               <h2 className="text-sm font-bold">
                 Simulation scenarios
               </h2>
             </div>
+
             <p className="text-xs leading-5 text-slate-500">
               Choose an urban safety scenario to explore.
             </p>
@@ -363,7 +433,8 @@ export default function Home() {
             {SCENARIOS.map((item) => {
               const Icon = item.icon;
               const isActive = scenario === item.id;
-              const isAvailable = item.status === "Available";
+              const isAvailable =
+                item.status === "Available";
 
               return (
                 <button
@@ -395,6 +466,7 @@ export default function Home() {
                         <span className="text-sm font-semibold">
                           {item.name}
                         </span>
+
                         <span
                           className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                             isAvailable
@@ -419,23 +491,30 @@ export default function Home() {
           {/* Location */}
           <div className="mt-6 rounded-xl border border-slate-200 p-4">
             <div className="mb-3 flex items-center gap-2">
-              <MapPin size={17} className="text-background" />
+              <MapPin
+                size={17}
+                className="text-background"
+              />
               <h3 className="text-sm font-bold">
                 Simulation location
               </h3>
             </div>
 
-            <p className="text-sm font-medium">Chandigarh, India</p>
+            <p className="text-sm font-medium">
+              Chandigarh, India
+            </p>
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              Map centered on Chandigarh. Select a building footprint
-              to explore an illustrative impact area.
+              Map centered on Chandigarh. Select a building
+              footprint to explore an illustrative impact area.
             </p>
           </div>
 
           {/* Current scenario */}
           <div className="mt-4 rounded-xl border border-slate-200 p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-bold">Current scenario</h3>
+              <h3 className="text-sm font-bold">
+                Current scenario
+              </h3>
               <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-semibold text-background">
                 Active
               </span>
@@ -443,7 +522,11 @@ export default function Home() {
 
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-600">
-                <Building2 size={20} />
+                {scenario === "major-fire" ? (
+                  <Flame size={20} />
+                ) : (
+                  <Building2 size={20} />
+                )}
               </div>
 
               <div>
@@ -491,8 +574,8 @@ export default function Home() {
               </div>
 
               <p className="mt-2 text-[11px] leading-4 text-slate-500">
-                Radius is a configurable visualization distance, not
-                an official evacuation or danger boundary.
+                Radius is a configurable visualization distance,
+                not an official evacuation or danger boundary.
               </p>
             </div>
           </div>
@@ -537,7 +620,8 @@ export default function Home() {
                     Selected building
                   </p>
                   <p className="mt-1 wrap-break-word text-sm font-semibold">
-                    {selectedBuilding.name || "Unnamed building"}
+                    {selectedBuilding.name ||
+                      "Unnamed building"}
                   </p>
 
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -566,7 +650,9 @@ export default function Home() {
                     </p>
                     <p className="mt-1 text-2xl font-bold text-red-800">
                       {radius}
-                      <span className="ml-1 text-xs font-medium">m</span>
+                      <span className="ml-1 text-xs font-medium">
+                        m
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -576,30 +662,39 @@ export default function Home() {
                     <p className="mb-2 text-xs font-semibold text-slate-700">
                       Nearby building footprints
                     </p>
+
                     <div className="max-h-40 space-y-2 overflow-y-auto">
-                      {affectedBuildings.slice(0, 12).map((building) => (
-                        <div
-                          key={building.id}
-                          className="flex items-start justify-between gap-2 rounded-lg border border-slate-100 p-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="wrap-break-word text-xs font-medium text-slate-700">
-                              {building.name || "Unnamed building"}
-                            </p>
-                            <p className="mt-1 text-[10px] text-slate-500">
-                              {building.type || "Unknown type"}
-                            </p>
+                      {affectedBuildings
+                        .slice(0, 12)
+                        .map((building) => (
+                          <div
+                            key={building.id}
+                            className="flex items-start justify-between gap-2 rounded-lg border border-slate-100 p-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="wrap-break-word text-xs font-medium text-slate-700">
+                                {building.name ||
+                                  "Unnamed building"}
+                              </p>
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                {building.type || "Unknown type"}
+                              </p>
+                            </div>
+
+                            <span className="shrink-0 text-[10px] text-slate-500">
+                              {Math.round(
+                                building.distanceMeters,
+                              )}{" "}
+                              m
+                            </span>
                           </div>
-                          <span className="shrink-0 text-[10px] text-slate-500">
-                            {Math.round(building.distanceMeters)} m
-                          </span>
-                        </div>
-                      ))}
+                        ))}
                     </div>
 
                     {affectedBuildings.length > 12 && (
                       <p className="mt-2 text-[10px] text-slate-500">
-                        Showing 12 of {affectedBuildings.length} footprints.
+                        Showing 12 of {affectedBuildings.length}{" "}
+                        footprints.
                       </p>
                     )}
                   </div>
@@ -608,7 +703,16 @@ export default function Home() {
             )}
           </div>
 
-          {/* Gemini safety recommendations */}
+          {/* Emergency services */}
+          <EmergencyServicesPanel
+            location={selectedBuilding?.location ?? null}
+            buildingName={
+              selectedBuilding?.name ?? "Selected building"
+            }
+            scenario={scenario}
+          />
+
+          {/* Safety recommendations */}
           <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
             <div className="mb-3 flex items-center gap-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
@@ -620,7 +724,7 @@ export default function Home() {
                   Safety Recommendations
                 </h3>
                 <p className="text-[10px] text-violet-700">
-                  Gemini AI · Illustrative guidance
+                  {providerLabel}
                 </p>
               </div>
             </div>
@@ -639,13 +743,13 @@ export default function Home() {
                   className="mx-auto mb-2 animate-spin text-violet-600"
                 />
                 <p className="text-xs font-semibold text-violet-900">
-                  Generating Gemini recommendations...
+                  Generating safety recommendations...
                 </p>
                 <p className="mt-1 text-[11px] text-violet-700">
                   Analyzing the selected scenario.
                 </p>
               </div>
-            ) : aiError && !aiRecommendations ? (
+            ) : aiError ? (
               <div className="space-y-3">
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3">
                   <div className="flex items-start gap-2">
@@ -655,7 +759,7 @@ export default function Home() {
                     />
                     <div>
                       <p className="text-xs font-semibold text-red-800">
-                        Gemini recommendations unavailable
+                        Recommendations request failed
                       </p>
                       <p className="mt-1 wrap-break-word text-[11px] leading-5 text-red-700">
                         {aiError}
@@ -666,11 +770,13 @@ export default function Home() {
 
                 <button
                   type="button"
-                  onClick={() => setRetryCount((count) => count + 1)}
+                  onClick={() =>
+                    setRetryCount((count) => count + 1)
+                  }
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-violet-700"
                 >
                   <RefreshCw size={14} />
-                  Retry Gemini
+                  Retry recommendations
                 </button>
 
                 <div className="rounded-lg bg-slate-50 p-3">
@@ -681,7 +787,8 @@ export default function Home() {
                     {getFallbackRecommendations(
                       selectedBuilding,
                       radius,
-                      affectedCount
+                      affectedCount,
+                      scenario,
                     ).summary}
                   </p>
                 </div>
@@ -719,7 +826,7 @@ export default function Home() {
                             {item.description}
                           </p>
                         </div>
-                      )
+                      ),
                     )}
                   </div>
                 </div>
@@ -730,7 +837,9 @@ export default function Home() {
                       size={15}
                       className="text-violet-700"
                     />
-                    <h4 className="text-xs font-bold">Suggested next steps</h4>
+                    <h4 className="text-xs font-bold">
+                      Suggested next steps
+                    </h4>
                   </div>
 
                   <ul className="space-y-2">
@@ -745,14 +854,16 @@ export default function Home() {
                           </span>
                           <span>{step}</span>
                         </li>
-                      )
+                      ),
                     )}
                   </ul>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => setRetryCount((count) => count + 1)}
+                  onClick={() =>
+                    setRetryCount((count) => count + 1)
+                  }
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 transition hover:bg-violet-50"
                 >
                   <RefreshCw size={13} />
@@ -767,10 +878,11 @@ export default function Home() {
                 className="mt-0.5 shrink-0 text-amber-700"
               />
               <p className="text-[10px] leading-4 text-amber-900">
-                AI guidance may be inaccurate. This simulation does
-                not predict structural failure or establish safe
-                evacuation boundaries. In an actual emergency in
-                India, call 112 and follow official instructions.
+                AI guidance may be inaccurate. This simulation
+                does not predict structural failure or establish
+                safe evacuation boundaries. In an actual
+                emergency in India, call 112 and follow official
+                instructions.
               </p>
             </div>
           </div>
@@ -791,7 +903,8 @@ export default function Home() {
                     Community safety awareness
                   </p>
                   <p className="mt-1 text-[11px] leading-4 text-slate-500">
-                    Clear, practical information for safer decision-making.
+                    Clear, practical information for safer
+                    decision-making.
                   </p>
                 </div>
               </div>
@@ -805,14 +918,15 @@ export default function Home() {
                     Emergency response support
                   </p>
                   <p className="mt-1 text-[11px] leading-4 text-slate-500">
-                    Future integrations for verified local response resources.
+                    Future integrations for verified local
+                    response resources.
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Disclaimer */}
+          {/* Prototype disclaimer */}
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <div className="flex items-start gap-2">
               <AlertTriangle
@@ -826,7 +940,8 @@ export default function Home() {
                 <p className="mt-1 text-[11px] leading-5 text-amber-800">
                   This is an experimental visualization. Nearby
                   footprints and impact radii are not verified
-                  damage predictions or official emergency advice.
+                  damage predictions or official emergency
+                  advice.
                 </p>
               </div>
             </div>
@@ -838,13 +953,16 @@ export default function Home() {
           <div className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-foreground px-4 py-3 sm:px-5">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold">Simulation map</h2>
+                <h2 className="text-sm font-bold">
+                  Simulation map
+                </h2>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
                   OpenStreetMap footprints
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-slate-500">
-                Select a building to view the illustrative impact area.
+                Select a building to view the illustrative impact
+                area.
               </p>
             </div>
 
@@ -868,14 +986,19 @@ export default function Home() {
           <div className="relative min-h-0 flex-1">
             <BuildingCollapseMap
               radius={radius}
-              selectedLocation={selectedBuilding?.location ?? null}
-              onBuildingSelect={setSelectedBuilding}
+              selectedLocation={
+                selectedBuilding?.location ?? null
+              }
+              onBuildingSelect={handleBuildingSelect}
             />
           </div>
 
           <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-foreground px-4 py-2.5 text-[10px] text-slate-500 sm:px-5">
             <span className="flex items-center gap-1.5">
-              <ShieldCheck size={13} className="text-emerald-600" />
+              <ShieldCheck
+                size={13}
+                className="text-emerald-600"
+              />
               Chandigarh SafeSim · Experimental prototype
             </span>
             <span>

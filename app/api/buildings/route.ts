@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
+
 export const maxDuration = 60;
 
-// Wider Chandigarh-area bounding box:
-// south, west, north, east
-const BOUNDS = "30.60,76.65,30.82,76.90";
+const BOUNDS = "30.71,76.75,30.76,76.81";
 
 const OVERPASS_SERVERS = [
   "https://overpass.kumi.systems/api/interpreter",
@@ -24,10 +23,20 @@ type BuildingFeature = {
   properties: {
     id: number;
     name: string;
+    address: string | null;
+    building: string;
     buildingType: string;
     levels: number | null;
-    address: string | null;
     hasRealName: boolean;
+    amenity: string | null;
+    shop: string | null;
+    office: string | null;
+    healthcare: string | null;
+    tourism: string | null;
+    historic: string | null;
+    landuse: string | null;
+    operator: string | null;
+    brand: string | null;
   };
   geometry: {
     type: "Polygon";
@@ -49,28 +58,47 @@ let cachedData: {
   data: BuildingsResponse;
 } | null = null;
 
+function cleanTag(value?: string): string | null {
+  const cleaned = value?.trim();
+  return cleaned || null;
+}
+
+function getAddress(tags: Record<string, string>): string | null {
+  const fullAddress = cleanTag(tags["addr:full"]);
+
+  if (fullAddress) return fullAddress;
+
+  const houseName = cleanTag(tags["addr:housename"]);
+  const houseNumber = cleanTag(tags["addr:housenumber"]);
+  const street = cleanTag(tags["addr:street"]);
+  const place = cleanTag(tags["addr:place"]);
+
+  if (houseName) return houseName;
+
+  const parts = [houseNumber, street || place].filter(Boolean);
+
+  return parts.length ? parts.join(", ") : null;
+}
+
 function getBuildingName(
   tags: Record<string, string>,
-  id: number
 ): {
   name: string;
   address: string | null;
   hasRealName: boolean;
 } {
-  const realName =
-    tags.name?.trim() ||
-    tags["addr:housename"]?.trim() ||
-    tags["official_name"]?.trim() ||
-    tags["short_name"]?.trim();
+  const address = getAddress(tags);
 
-  const houseNumber = tags["addr:housenumber"]?.trim();
-  const street = tags["addr:street"]?.trim();
-  const place = tags["addr:place"]?.trim();
-
-  const address =
-    [houseNumber, street || place].filter(Boolean).join(", ") ||
-    tags["addr:full"]?.trim() ||
-    null;
+  const realName = [
+    tags.name,
+    tags.official_name,
+    tags["name:en"],
+    tags["building:name"],
+    tags.short_name,
+    tags.brand,
+  ]
+    .map(cleanTag)
+    .find(Boolean);
 
   if (realName) {
     return {
@@ -80,18 +108,93 @@ function getBuildingName(
     };
   }
 
-  if (address) {
+  const category =
+    cleanTag(tags.amenity) ||
+    cleanTag(tags.healthcare) ||
+    cleanTag(tags.shop) ||
+    cleanTag(tags.office) ||
+    cleanTag(tags.tourism) ||
+    cleanTag(tags.historic);
+
+  const categoryLabels: Record<string, string> = {
+    hospital: "Hospital",
+    clinic: "Clinic",
+    doctors: "Medical Clinic",
+    school: "School",
+    university: "University",
+    college: "College",
+    kindergarten: "Kindergarten",
+    library: "Library",
+    police: "Police Station",
+    fire_station: "Fire Station",
+    townhall: "Government Building",
+    community_centre: "Community Centre",
+    place_of_worship: "Place of Worship",
+    pharmacy: "Pharmacy",
+    bank: "Bank",
+    restaurant: "Restaurant",
+    cafe: "Cafe",
+    supermarket: "Supermarket",
+    hotel: "Hotel",
+    museum: "Museum",
+    theatre: "Theatre",
+    cinema: "Cinema",
+    marketplace: "Market",
+    dentist: "Dental Clinic",
+  };
+
+  if (category) {
+    const label =
+      categoryLabels[category] ??
+      category
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
     return {
-      name: address,
+      name: address ? `${label} · ${address}` : label,
       address,
       hasRealName: false,
     };
   }
 
-  // This is a generated label, not an actual registered building name.
+  const building = cleanTag(tags.building);
+
+  const buildingLabels: Record<string, string> = {
+    residential: "Residential Building",
+    apartments: "Apartment Building",
+    house: "House",
+    detached: "House",
+    semidetached_house: "Semi-Detached House",
+    terrace: "Terraced House",
+    commercial: "Commercial Building",
+    industrial: "Industrial Building",
+    retail: "Retail Building",
+    office: "Office Building",
+    hospital: "Hospital Building",
+    school: "School Building",
+    university: "University Building",
+    college: "College Building",
+    hotel: "Hotel Building",
+    public: "Public Building",
+    government: "Government Building",
+    church: "Church",
+    mosque: "Mosque",
+    temple: "Temple",
+    garage: "Garage",
+    warehouse: "Warehouse",
+    dormitory: "Dormitory",
+  };
+
+  const buildingLabel = building
+    ? buildingLabels[building] ??
+      (building === "yes"
+        ? "Building"
+        : building.replace(/_/g, " "))
+    : "Building";
+
   return {
-    name: `Building #${id}`,
-    address: null,
+    name: address ? `${buildingLabel} · ${address}` : buildingLabel,
+    address,
     hasRealName: false,
   };
 }
@@ -113,7 +216,6 @@ function toBuildingFeature(
   const first = coordinates[0];
   const last = coordinates[coordinates.length - 1];
 
-  // GeoJSON polygon rings must be closed.
   if (first[0] !== last[0] || first[1] !== last[1]) {
     coordinates.push([first[0], first[1]]);
   }
@@ -123,7 +225,7 @@ function toBuildingFeature(
   }
 
   const tags = element.tags ?? {};
-  const buildingName = getBuildingName(tags, element.id);
+  const buildingName = getBuildingName(tags);
   const rawLevels = Number(tags["building:levels"]);
 
   return {
@@ -132,13 +234,29 @@ function toBuildingFeature(
     properties: {
       id: element.id,
       name: buildingName.name,
-      buildingType: tags.building ?? "yes",
+      address: buildingName.address,
+      building: tags.building ?? "yes",
+      buildingType:
+        tags.amenity ??
+        tags.healthcare ??
+        tags.shop ??
+        tags.office ??
+        tags.building ??
+        "unknown",
       levels:
         Number.isFinite(rawLevels) && rawLevels > 0
           ? rawLevels
           : null,
-      address: buildingName.address,
       hasRealName: buildingName.hasRealName,
+      amenity: cleanTag(tags.amenity),
+      shop: cleanTag(tags.shop),
+      office: cleanTag(tags.office),
+      healthcare: cleanTag(tags.healthcare),
+      tourism: cleanTag(tags.tourism),
+      historic: cleanTag(tags.historic),
+      landuse: cleanTag(tags.landuse),
+      operator: cleanTag(tags.operator),
+      brand: cleanTag(tags.brand),
     },
     geometry: {
       type: "Polygon",
@@ -190,7 +308,8 @@ export async function GET() {
         .filter((element) => element.type === "way")
         .map(toBuildingFeature)
         .filter(
-          (feature): feature is BuildingFeature => feature !== null
+          (feature): feature is BuildingFeature =>
+            feature !== null
         );
 
       if (features.length === 0) {
