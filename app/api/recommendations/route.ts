@@ -1,23 +1,33 @@
+
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 
+const FacilitySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  location: z.tuple([z.number(), z.number()]),
+  straightLineMeters: z.number().nonnegative(),
+  directionsUrl: z.string().url(),
+});
+
 const RequestSchema = z.object({
-  scenario: z
-    .enum(["building-collapse", "major-fire"])
-    .default("building-collapse"),
+  scenario: z.enum(["building-collapse", "major-fire"]),
   buildingName: z.string().min(1).max(200),
   buildingType: z.string().max(100).default("Unknown"),
   levels: z.union([z.string(), z.number(), z.null()]).optional(),
-  radius: z.union([
-    z.literal(75),
-    z.literal(150),
-    z.literal(250),
-  ]),
+  radius: z.union([z.literal(75), z.literal(150), z.literal(250)]),
   affectedCount: z.number().int().min(0).max(100000),
+  facilities: z.array(FacilitySchema).max(100).default([]),
 });
 
-const OutputSchema = z.object({
+const FacilityAnalysisSchema = z.object({
+  recommendedFacilityIds: z.array(z.string()).max(5),
+  explanation: z.string(),
+});
+
+const SafetySchema = z.object({
   summary: z.string(),
   precautions: z.array(
     z.object({
@@ -28,156 +38,116 @@ const OutputSchema = z.object({
   nextSteps: z.array(z.string()).min(1).max(6),
 });
 
-type RecommendationData = z.infer<typeof OutputSchema>;
+type RequestData = z.infer<typeof RequestSchema>;
+type Facility = z.infer<typeof FacilitySchema>;
+type SafetyData = z.infer<typeof SafetySchema>;
 
-function getFallbackRecommendations(
-  buildingName: string,
-  scenario: "building-collapse" | "major-fire",
-  radius: number,
-  affectedCount: number,
-): RecommendationData {
-  if (scenario === "major-fire") {
-    return {
-      summary:
-        `The Major Fire simulation selected ${buildingName} and identified ` +
-        `${affectedCount} other mapped building footprints within the illustrative ` +
-        `${radius} m zone. This does not predict fire spread or confirm damage.`,
+async function callGemma(prompt: string): Promise<string> {
+  const apiKey = process.env.OLLAMA_API_KEY;
+  if (!apiKey) throw new Error("OLLAMA_API_KEY is not configured.");
 
-      precautions: [
+  const response = await fetch("https://ollama.com/api/chat", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: process.env.OLLAMA_MODEL || "gemma4:cloud",
+      messages: [
         {
-          title: "Move away from fire and smoke",
-          description:
-            "If a real fire occurs, leave the immediate danger area and avoid breathing smoke. Do not enter a burning building.",
+          role: "system",
+          content:
+            "You analyze supplied emergency-facility data. Use only provided facility IDs. Never invent facilities, distances, opening hours, road conditions, or availability. Return JSON only.",
         },
-        {
-          title: "Raise the alarm",
-          description:
-            "Alert people nearby if you can do so safely. Contact emergency services and provide the exact location.",
-        },
-        {
-          title: "Use a safe exit",
-          description:
-            "Follow marked exits and emergency instructions. Do not use lifts during a fire, and do not re-enter the building.",
-        },
-        {
-          title: "Keep access routes clear",
-          description:
-            "Stay clear of fire engines and emergency responders. Do not treat the simulated radius as a safe evacuation boundary.",
-        },
+        { role: "user", content: prompt },
       ],
+      format: "json",
+      stream: false,
+      options: { temperature: 0.1 },
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
 
-      nextSteps: [
-        "For a real emergency in India, call 112.",
-        "Move to a safe location and follow instructions from emergency responders.",
-        "Do not return until authorities confirm the area is safe.",
-      ],
-    };
+  if (!response.ok) {
+    throw new Error(`Gemma HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`);
   }
+
+  const result = (await response.json()) as {
+    message?: { content?: string };
+  };
+
+  if (!result.message?.content) throw new Error("Gemma returned no content.");
+  return result.message.content;
+}
+
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
+
+  const ai = new GoogleGenAI({ apiKey });
+  const result = await ai.models.generateContent({
+    model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      temperature: 0.2,
+    },
+  });
+
+  if (!result.text) throw new Error("Gemini returned no content.");
+  return result.text;
+}
+
+function parseJson<T>(text: string, schema: z.ZodType<T>): T {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
+
+  return schema.parse(JSON.parse(cleaned));
+}
+
+function fallbackSafety(input: RequestData): SafetyData {
+  const fire = input.scenario === "major-fire";
 
   return {
-    summary:
-      `The Building Collapse simulation selected ${buildingName} and identified ` +
-      `${affectedCount} other mapped building footprints within the illustrative ` +
-      `${radius} m zone. Nearby footprints do not prove structural damage or predict collapse.`,
-
-    precautions: [
-      {
-        title: "Stay away from immediate danger",
-        description:
-          "If a real collapse or visible structural failure occurs, move away from the affected area. Do not enter damaged structures.",
-      },
-      {
-        title: "Follow emergency instructions",
-        description:
-          "Follow directions from emergency responders and local authorities. Do not attempt an untrained rescue in an unstable building.",
-      },
-      {
-        title: "Keep routes clear",
-        description:
-          "Avoid blocking access routes needed by emergency services. Do not assume the simulated radius is a safe evacuation boundary.",
-      },
-      {
-        title: "Do not treat this as a prediction",
-        description:
-          "Mapped building proximity alone cannot establish structural integrity, collapse probability, or actual damage.",
-      },
-    ],
-
+    summary: `${fire ? "Fire" : "Building-collapse"} simulation for ${input.buildingName}. Nearby facility information is based on supplied map data and may be incomplete. The simulation does not verify actual danger or safe routes.`,
+    precautions: fire
+      ? [
+          {
+            title: "Move away from fire and smoke",
+            description: "Leave the immediate danger area if you can do so safely. Never enter a burning building.",
+          },
+          {
+            title: "Raise the alarm",
+            description: "Call emergency services and report the location and visible hazards.",
+          },
+          {
+            title: "Avoid lifts",
+            description: "Use an exit only when it is safe to do so. Follow responders' instructions and do not re-enter.",
+          },
+        ]
+      : [
+          {
+            title: "Stay away from damaged structures",
+            description: "Do not enter a damaged building or attempt an untrained rescue in an unstable area.",
+          },
+          {
+            title: "Contact emergency services",
+            description: "Report the location and visible hazards to emergency responders.",
+          },
+          {
+            title: "Keep access clear",
+            description: "Stay clear of responders and follow official instructions.",
+          },
+        ],
     nextSteps: [
-      "For a real emergency in India, call 112 and provide the location and known hazards.",
-      "Move away from immediate danger and follow emergency responders.",
-      "Have suspected structural damage assessed by qualified professionals and relevant authorities.",
+      "For a real emergency in India, call 112.",
+      "Use the supplied facility list as a starting point, not confirmation that a service is open or available.",
+      "Open directions for a listed facility only when responders or the situation indicate it is safe to travel.",
     ],
   };
-}
-
-function getErrorStatus(error: unknown): number | null {
-  if (
-    typeof error !== "object" ||
-    error === null ||
-    !("status" in error)
-  ) {
-    return null;
-  }
-
-  const status = Number(error.status);
-  return Number.isFinite(status) ? status : null;
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function generateWithRetry(
-  ai: GoogleGenAI,
-  prompt: string,
-): Promise<string> {
-  const maxAttempts = 3;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.3,
-        },
-      });
-
-      if (!response.text) {
-        throw new Error("Gemini returned an empty response.");
-      }
-
-      return response.text;
-    } catch (error) {
-      const status = getErrorStatus(error);
-
-      // Quota/rate-limit errors should not be retried immediately.
-      if (status === 429) {
-        throw error;
-      }
-
-      const retryable =
-        status === 500 ||
-        status === 502 ||
-        status === 503 ||
-        status === 504;
-
-      if (!retryable || attempt === maxAttempts - 1) {
-        throw error;
-      }
-
-      console.warn(
-        `Gemini request failed with status ${status}. ` +
-          `Retrying (${attempt + 1}/${maxAttempts - 1})...`,
-      );
-
-      await wait(1000 * 2 ** attempt);
-    }
-  }
-
-  throw new Error("Gemini generation failed.");
 }
 
 export async function POST(request: Request) {
@@ -192,138 +162,140 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = RequestSchema.safeParse(body);
+  const validation = RequestSchema.safeParse(body);
 
-  if (!parsed.success) {
+  if (!validation.success) {
     return NextResponse.json(
-      { success: false, error: "Invalid simulation details." },
+      {
+        success: false,
+        error: "Invalid simulation details.",
+        details: validation.error.flatten(),
+      },
       { status: 400 },
     );
   }
 
-  const {
-    scenario,
-    buildingName,
-    buildingType,
-    levels,
-    radius,
-    affectedCount,
-  } = parsed.data;
-
-  const fallback = getFallbackRecommendations(
-    buildingName,
-    scenario,
-    radius,
-    affectedCount,
+  const input = validation.data;
+  const facilities = [...input.facilities].sort(
+    (a, b) => a.straightLineMeters - b.straightLineMeters,
   );
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  let rankedFacilities: Facility[] = facilities.slice(0, 5);
+  let gemmaExplanation =
+    "Facilities are ordered by supplied straight-line distance. AI ranking was unavailable.";
 
-  if (!apiKey) {
-    return NextResponse.json({
-      success: true,
-      data: fallback,
-      fallback: true,
-    });
-  }
-
-  const scenarioName =
-    scenario === "major-fire" ? "Major Fire" : "Building Collapse";
-
-  const scenarioInstructions =
-    scenario === "major-fire"
-      ? `
-- Give general fire and smoke safety guidance.
-- Advise leaving the danger area, raising the alarm, and contacting emergency services.
-- Do not predict fire spread or claim nearby buildings will catch fire.
-`
-      : `
-- Give general building-collapse safety guidance.
-- Advise moving away from unstable structures and following emergency responders.
-- Do not estimate collapse probability, casualties, or structural integrity.
-`;
-
-  const prompt = `
-You are a safety education assistant for a college urban-safety prototype.
-
-Scenario: ${scenarioName}
-
-Simulation information:
-- Building: ${buildingName}
-- Building type: ${buildingType}
-- Floors: ${levels ?? "Unknown"}
-- Illustrative radius: ${radius} metres
-- Other mapped building footprints within the zone: ${affectedCount}
-
-Return a JSON object with exactly these fields:
-{
-  "summary": "A short explanation of what this simulation shows",
-  "precautions": [
-    {
-      "title": "Short title",
-      "description": "Practical general precaution"
-    }
-  ],
-  "nextSteps": ["Practical general action"]
-}
-
-Requirements:
-- Include 3 to 5 precautions and 2 to 4 next steps.
-- Use simple English.
-- Explain that the map is an illustrative simulation, not a verified prediction.
-- Do not invent real-time emergency information or claim the mapped radius is a safe boundary.
-- For a real emergency in India, advise contacting emergency services at 112.
-- Do not provide dangerous rescue or entry instructions.
-${scenarioInstructions}
-Return only valid JSON without Markdown fences.
-`;
-
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const responseText = await generateWithRetry(ai, prompt);
-
-    let recommendations: unknown;
-
+  // Stage 1: Gemma analyses facility relevance and distance.
+  if (process.env.OLLAMA_API_KEY && facilities.length > 0) {
     try {
-      recommendations = JSON.parse(responseText);
-    } catch {
-      return NextResponse.json({
-        success: true,
-        data: fallback,
-        fallback: true,
-      });
-    }
+      const ranking = parseJson(
+        await callGemma(`
+Analyze the nearby emergency facilities for this simulation.
 
-    const validated = OutputSchema.safeParse(recommendations);
+Scenario: ${input.scenario}
+Selected building: ${input.buildingName}
+Building type: ${input.buildingType}
 
-    if (!validated.success) {
-      return NextResponse.json({
-        success: true,
-        data: fallback,
-        fallback: true,
-      });
-    }
+Facility records (authoritative input; do not change them):
+${JSON.stringify(facilities)}
 
-    return NextResponse.json({
-      success: true,
-      data: validated.data,
-      fallback: false,
-    });
-  } catch (error) {
-    const status = getErrorStatus(error);
-
-    if (status === 429) {
-      console.warn(
-        "Gemini quota/rate limit reached. Using fallback recommendations.",
+Choose up to 5 appropriate facility IDs from this list.
+For a fire, prioritize fire stations for fire response; hospitals for injured people.
+For a collapse, prioritize fire/rescue or police for scene response, and hospitals for medical care.
+Use distance as a consideration, not proof of travel time or availability.
+Return JSON exactly:
+{
+  "recommendedFacilityIds": ["existing-id"],
+  "explanation": "Brief explanation"
+}
+Do not invent IDs or claim a facility is open.
+`),
+        FacilityAnalysisSchema,
       );
-    } else {
-      console.error("Safety recommendations error:", error);
-    }
 
-    return NextResponse.json({
-      success: true,
-      data: fallback,
-      fallback: true,
-    });
+      const byId = new Map(facilities.map((facility) => [facility.id, facility]));
+      const chosen = ranking.recommendedFacilityIds
+        .map((id) => byId.get(id))
+        .filter((facility): facility is Facility => Boolean(facility));
+
+      if (chosen.length > 0) rankedFacilities = chosen;
+      gemmaExplanation = ranking.explanation;
+    } catch (error) {
+      console.warn(
+        "[recommendations] Gemma facility analysis failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
+
+  const fallback = fallbackSafety(input);
+  let safety: SafetyData = fallback;
+  let safetyProvider: "gemini" | "built-in" = "built-in";
+
+  // Stage 2: Gemini generates safety steps using the actual facility records.
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      safety = parseJson(
+        await callGemini(`
+You are a cautious urban-safety education assistant.
+
+Scenario: ${input.scenario}
+Selected building: ${input.buildingName}
+Building type: ${input.buildingType}
+Floors: ${input.levels ?? "Unknown"}
+Illustrative radius: ${input.radius} metres
+Other mapped building footprints: ${input.affectedCount}
+
+Gemma's facility analysis:
+${gemmaExplanation}
+
+Actual facilities supplied by the application's map API:
+${JSON.stringify(rankedFacilities)}
+
+Write practical safety precautions and next steps in simple English.
+
+Rules:
+- Never invent a facility, ID, distance, opening hour, phone number, road condition, or travel time.
+- Facility distances are straight-line distances, not driving distances.
+- Use facility names and distances only from the supplied data.
+- Do not claim that any facility is open or accepting patients.
+- For real emergencies in India, advise calling 112.
+- Never tell people to enter a burning, unstable, or damaged building.
+- Do not assume travelling to a facility is safe during an active hazard.
+- Clearly state that this is a simulation, not a verified emergency assessment.
+- If no facilities were supplied, say no verified nearby facilities were returned; do not invent alternatives.
+- Return JSON only:
+{
+  "summary": "Brief scenario summary and relevant facility information",
+  "precautions": [{"title": "Short title", "description": "Practical advice"}],
+  "nextSteps": ["Actionable step"]
+}
+Provide 3–5 precautions and 2–4 next steps.
+`),
+        SafetySchema,
+      );
+
+      safetyProvider = "gemini";
+    } catch (error) {
+      console.warn(
+        "[recommendations] Gemini safety guidance failed:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      ...safety,
+      nearbyFacilities: rankedFacilities,
+      facilityAnalysis: gemmaExplanation,
+    },
+    provider: safetyProvider,
+    facilityProvider:
+      process.env.OLLAMA_API_KEY && gemmaExplanation !==
+      "Facilities are ordered by supplied straight-line distance. AI ranking was unavailable."
+        ? "gemma"
+        : "distance-sort",
+    fallback: safetyProvider === "built-in",
+  });
 }

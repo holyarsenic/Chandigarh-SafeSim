@@ -1,14 +1,8 @@
-
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
-import type {
-  Feature,
-  FeatureCollection,
-  MultiPolygon,
-  Polygon,
-} from "geojson";
+import type { Feature, MultiPolygon, Polygon } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
@@ -16,11 +10,19 @@ maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 type BuildingProperties = {
   [key: string]: unknown;
   id?: number | string;
-  name?: string;
+  name?: string | null;
+  address?: string | null;
   building?: string;
   buildingType?: string;
   levels?: string | number | null;
   affected?: boolean;
+  hasRealName?: boolean | null;
+  amenity?: string | null;
+  healthcare?: string | null;
+  shop?: string | null;
+  office?: string | null;
+  tourism?: string | null;
+  historic?: string | null;
 };
 
 type BuildingGeometry = Polygon | MultiPolygon;
@@ -59,10 +61,12 @@ function makeCircle(lng: number, lat: number, radius: number) {
   const points: [number, number][] = [];
   const latOffset = radius / 111320;
   const lngOffset =
-    radius / (111320 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+    radius /
+    (111320 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
 
   for (let angle = 0; angle <= 360; angle += 5) {
     const radians = (angle * Math.PI) / 180;
+
     points.push([
       lng + lngOffset * Math.cos(radians),
       lat + latOffset * Math.sin(radians),
@@ -97,6 +101,127 @@ function stableId(feature: BuildingFeature, index: number): number {
     : index + 1;
 }
 
+/**
+ * Converts OSM properties into a user-friendly display name.
+ * The numeric OSM ID is never used as a display name.
+ */
+function getBuildingDisplayName(feature: {
+  id?: number | string;
+  properties?: {
+    id?: number | string;
+    name?: string | null;
+    address?: string | null;
+    hasRealName?: boolean | null;
+    building?: string;
+    buildingType?: string;
+    amenity?: string | null;
+    healthcare?: string | null;
+    shop?: string | null;
+    office?: string | null;
+    tourism?: string | null;
+    historic?: string | null;
+  };
+}): string {
+  const properties = feature.properties;
+
+  if (!properties) {
+    return "Unnamed Building";
+  }
+
+  const name = properties.name?.trim();
+
+  // Prefer the name provided by the API.
+  if (
+    name &&
+    name.toLowerCase() !== "building" &&
+    name.toLowerCase() !== "unnamed building"
+  ) {
+    return name;
+  }
+
+  // If there is no useful name, use the address.
+  const address = properties.address?.trim();
+
+  if (address) {
+    return address;
+  }
+
+  const categoryLabels: Record<string, string> = {
+    hospital: "Hospital",
+    clinic: "Clinic",
+    doctors: "Medical Clinic",
+    school: "School",
+    university: "University",
+    college: "College",
+    kindergarten: "Kindergarten",
+    library: "Library",
+    police: "Police Station",
+    fire_station: "Fire Station",
+    pharmacy: "Pharmacy",
+    bank: "Bank",
+    restaurant: "Restaurant",
+    cafe: "Cafe",
+    supermarket: "Supermarket",
+    hotel: "Hotel",
+    museum: "Museum",
+    theatre: "Theatre",
+    cinema: "Cinema",
+    marketplace: "Market",
+    dentist: "Dental Clinic",
+    place_of_worship: "Place of Worship",
+    commercial: "Commercial Building",
+    residential: "Residential Building",
+    apartments: "Apartment Building",
+    house: "House",
+    detached: "House",
+    industrial: "Industrial Building",
+    retail: "Retail Building",
+    office: "Office Building",
+    public: "Public Building",
+    government: "Government Building",
+    warehouse: "Warehouse",
+    dormitory: "Dormitory",
+    church: "Church",
+    mosque: "Mosque",
+    temple: "Temple",
+  };
+
+  const categories = [
+    properties.amenity,
+    properties.healthcare,
+    properties.shop,
+    properties.office,
+    properties.tourism,
+    properties.historic,
+    properties.buildingType,
+    properties.building,
+  ];
+
+  for (const value of categories) {
+    const category = value?.trim().toLowerCase();
+
+    if (!category || category === "yes") {
+      continue;
+    }
+
+    if (categoryLabels[category]) {
+      return categoryLabels[category];
+    }
+
+    // Format an unfamiliar OSM category into readable text.
+    if (
+      category === properties.buildingType?.toLowerCase() ||
+      category === properties.building?.toLowerCase()
+    ) {
+      return category
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+  }
+
+  return "Unnamed Building";
+}
+
 function distanceMeters(
   a: [number, number],
   b: [number, number]
@@ -108,7 +233,9 @@ function distanceMeters(
 
   const h =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    Math.cos(lat1) *
+      Math.cos(lat2) *
+      Math.sin(dLng / 2) ** 2;
 
   return (
     6371000 *
@@ -177,7 +304,7 @@ function pointInRing(
     const yj = ring[j][1];
 
     const crosses =
-      yi > y !== yj > y &&
+      (yi > y) !== (yj > y) &&
       x < ((xj - xi) * (y - yi)) / (yj - yi || 1e-12) + xi;
 
     if (crosses) inside = !inside;
@@ -253,7 +380,7 @@ function getApproxCenter(
 
   if (!ring?.length) return CHANDIGARH_CENTER;
 
-  const total = ring.reduce(
+  const total = ring.reduce<[number, number]>(
     (sum, point) => [sum[0] + point[0], sum[1] + point[1]],
     [0, 0]
   );
@@ -268,12 +395,12 @@ function getBuildingDetails(
 ): AffectedBuilding {
   const rawId = Number(feature.properties?.id);
   const id = Number.isFinite(rawId) ? rawId : index + 1;
-
   const rawLevels = feature.properties?.levels;
 
   return {
     id,
-    name: String(feature.properties?.name || "Unnamed building"),
+    // FIX: Pass the complete feature, not feature.properties.
+    name: getBuildingDisplayName(feature),
     type: String(
       feature.properties?.buildingType ||
         feature.properties?.building ||
@@ -469,40 +596,65 @@ export default function BuildingCollapseMap({
               "interpolate",
               ["linear"],
               ["zoom"],
-              11,
-              0.6,
-              15,
-              1.6,
-              18,
-              2.5,
+              11, 0.6,
+              15, 1.6,
+              18, 2.5,
             ],
             "line-opacity": 1,
           },
         });
 
-        // ADDED: Building labels
         map.addLayer({
           id: "building-labels",
           type: "symbol",
           source: "buildings-source",
-          minzoom: 14,
+          minzoom: 13,
           layout: {
             "text-field": [
-              "coalesce",
+              "case",
+              [
+                "all",
+                ["==", ["get", "hasRealName"], true],
+                ["has", "name"],
+                ["!=", ["get", "name"], ""],
+              ],
               ["get", "name"],
-              ["concat", "Building #", ["to-string", ["get", "id"]]],
+              [
+                "all",
+                ["has", "address"],
+                ["!=", ["get", "address"], null],
+                ["!=", ["get", "address"], ""],
+              ],
+              ["get", "address"],
+              [
+                "all",
+                ["has", "name"],
+                ["!=", ["get", "name"], ""],
+                ["!=", ["get", "name"], "Building"],
+                ["!=", ["get", "name"], "Unnamed Building"],
+              ],
+              ["get", "name"],
+              "",
             ],
+            "text-font": ["Open Sans Regular"],
             "text-size": [
               "interpolate",
               ["linear"],
               ["zoom"],
-              14, 9,
-              18, 12,
+              13, 10,
+              16, 12,
+              19, 14,
             ],
             "text-anchor": "center",
-            "text-max-width": 10,
+            "text-max-width": 12,
             "text-allow-overlap": false,
             "text-ignore-placement": false,
+            "symbol-sort-key": [
+              "case",
+              ["==", ["get", "hasRealName"], true],
+              0,
+              1,
+            ],
           },
           paint: {
             "text-color": "#ffffff",
@@ -570,9 +722,9 @@ export default function BuildingCollapseMap({
 
           buildingsRef.current = updatedFeatures;
 
-          const source = map.getSource(
-            "buildings-source"
-          ) as maplibregl.GeoJSONSource | undefined;
+          const source = map.getSource("buildings-source") as
+            | maplibregl.GeoJSONSource
+            | undefined;
 
           source?.setData({
             type: "FeatureCollection",
@@ -596,7 +748,10 @@ export default function BuildingCollapseMap({
 
           const details: SelectedBuilding = {
             id: selectedId,
-            name: String(selected.properties?.name || "Unnamed building"),
+
+            // FIX: Pass the complete feature.
+            name: getBuildingDisplayName(selected),
+
             type: String(
               selected.properties?.buildingType ||
                 selected.properties?.building ||
@@ -626,6 +781,7 @@ export default function BuildingCollapseMap({
           if (
             !previous ||
             previous.id !== details.id ||
+            previous.name !== details.name ||
             previous.affectedCount !== details.affectedCount ||
             previousIds !== currentIds ||
             previous.location[0] !== details.location[0] ||
@@ -677,7 +833,9 @@ export default function BuildingCollapseMap({
 
           impactSource.setData({
             type: "FeatureCollection",
-            features: [makeCircle(location[0], location[1], radiusRef.current)],
+            features: [
+              makeCircle(location[0], location[1], radiusRef.current),
+            ],
           });
 
           map.flyTo({
@@ -700,14 +858,16 @@ export default function BuildingCollapseMap({
         const response = await fetch("/api/buildings");
 
         if (!response.ok) {
-          throw new Error(
-            `Buildings API returned ${response.status}. Check /api/buildings.`
-          );
+          throw new Error(`Buildings API returned ${response.status}.`);
         }
 
         const result: {
           success?: boolean;
-          data?: FeatureCollection;
+          count?: number;
+          data?: {
+            type: "FeatureCollection";
+            features: Feature[];
+          };
           error?: string;
         } = await response.json();
 
@@ -745,9 +905,7 @@ export default function BuildingCollapseMap({
         setLoading(false);
 
         if (!features.length) {
-          setMapError(
-            "No building footprints were returned. Check /api/buildings."
-          );
+          setMapError("No building footprints were returned.");
           return;
         }
 
@@ -783,11 +941,13 @@ export default function BuildingCollapseMap({
         if (cancelled) return;
 
         console.error("Building simulation map error:", error);
+
         setMapError(
           error instanceof Error
             ? error.message
             : "Failed to load building footprints."
         );
+
         setLoading(false);
       }
     });
@@ -814,7 +974,9 @@ export default function BuildingCollapseMap({
       />
 
       <div className="absolute bottom-4 left-4 z-10 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-sm text-white shadow-lg">
-        {loading ? "Loading buildings..." : `${buildingCount} buildings loaded`}
+        {loading
+          ? "Loading buildings..."
+          : `${buildingCount} buildings loaded`}
       </div>
 
       <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-xs text-white shadow-lg">
@@ -822,10 +984,12 @@ export default function BuildingCollapseMap({
           <span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />
           Buildings
         </span>
+
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-orange-400" />
           Potentially affected
         </span>
+
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />
           Selected
@@ -835,7 +999,7 @@ export default function BuildingCollapseMap({
       <button
         type="button"
         onClick={showCity}
-        className="absolute bottom-4 right-4 z-10 rounded-lg bg-foreground/80 px-3 py-2 text-sm font-medium text-background shadow-lg hover:bg-background hover:text-foreground transition-colors ease-in-out"
+        className="absolute bottom-4 right-4 z-10 rounded-lg bg-foreground/80 px-3 py-2 text-sm font-medium text-background shadow-lg transition-colors ease-in-out hover:bg-background hover:text-foreground"
       >
         City overview
       </button>
