@@ -1,0 +1,221 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": 1001,
+      "properties": {
+        "id": 1001,
+        "name": "Punjab & Haryana Secretariat",
+        "address": "Sector 1, Chandigarh",
+        "building": "government",
+        "buildingType": "government",
+        "levels": 9,
+        "hasRealName": true,
+        "amenity": "townhall"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.8015, 30.7585], [76.8035, 30.7585], [76.8035, 30.7565], [76.8015, 30.7565], [76.8015, 30.7585]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1002,
+      "properties": {
+        "id": 1002,
+        "name": "Punjab and Haryana High Court",
+        "address": "Capitol Complex, Sector 1, Chandigarh",
+        "building": "courthouse",
+        "buildingType": "courthouse",
+        "levels": 4,
+        "hasRealName": true,
+        "amenity": "courthouse"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.8040, 30.7595], [76.8070, 30.7595], [76.8070, 30.7570], [76.8040, 30.7570], [76.8040, 30.7595]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1003,
+      "properties": {
+        "id": 1003,
+        "name": "PGIMER Nehru Hospital Block",
+        "address": "Sector 12, Chandigarh",
+        "building": "hospital",
+        "buildingType": "hospital",
+        "levels": 7,
+        "hasRealName": true,
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7720, 30.7670], [76.7750, 30.7670], [76.7750, 30.7640], [76.7720, 30.7640], [76.7720, 30.7670]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1004,
+      "properties": {
+        "id": 1004,
+        "name": "Panjab University Administrative Block",
+        "address": "Sector 14, Chandigarh",
+        "building": "university",
+        "buildingType": "university",
+        "levels": 5,
+        "hasRealName": true,
+        "amenity": "university"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7660, 30.7590], [76.7690, 30.7590], [76.7690, 30.7560], [76.7660, 30.7560], [76.7660, 30.7590]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1005,
+      "properties": {
+        "id": 1005,
+        "name": "Sector 17 Central Plaza & Neelam Theatre",
+        "address": "Sector 17, Chandigarh",
+        "building": "commercial",
+        "buildingType": "commercial",
+        "levels": 4,
+        "hasRealName": true,
+        "amenity": "cinema"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7780, 30.7410], [76.7810, 30.7410], [76.7810, 30.7380], [76.7780, 30.7380], [76.7780, 30.7410]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1006,
+      "properties": {
+        "id": 1006,
+        "name": "General Hospital (GMSH)",
+        "address": "Sector 16, Chandigarh",
+        "building": "hospital",
+        "buildingType": "hospital",
+        "levels": 5,
+        "hasRealName": true,
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7780, 30.7475], [76.7810, 30.7475], [76.7810, 30.7445], [76.7780, 30.7445], [76.7780, 30.7475]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1007,
+      "properties": {
+        "id": 1007,
+        "name": "ISBT Sector 17 Bus Terminus",
+        "address": "Sector 17, Chandigarh",
+        "building": "transportation",
+        "buildingType": "transportation",
+        "levels": 3,
+        "hasRealName": true,
+        "amenity": "bus_station"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7730, 30.7380], [76.7760, 30.7380], [76.7760, 30.7350], [76.7730, 30.7350], [76.7730, 30.7380]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1008,
+      "properties": {
+        "id": 1008,
+        "name": "Aroma Complex",
+        "address": "Sector 22-C, Chandigarh",
+        "building": "commercial",
+        "buildingType": "commercial",
+        "levels": 4,
+        "hasRealName": true,
+        "amenity": "hotel"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7700, 30.7310], [76.7725, 30.7310], [76.7725, 30.7290], [76.7700, 30.7290], [76.7700, 30.7310]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1009,
+      "properties": {
+        "id": 1009,
+        "name": "Kisan Bhawan",
+        "address": "Sector 35-A, Dakshin Marg, Chandigarh",
+        "building": "commercial",
+        "buildingType": "commercial",
+        "levels": 4,
+        "hasRealName": true,
+        "amenity": "office"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7725, 30.7255], [76.7745, 30.7255], [76.7745, 30.7235], [76.7725, 30.7235], [76.7725, 30.7255]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1010,
+      "properties": {
+        "id": 1010,
+        "name": "JW Marriott Luxury Complex",
+        "address": "Plot No 6, Sector 35-B, Dakshin Marg, Chandigarh",
+        "building": "hotel",
+        "buildingType": "hotel",
+        "levels": 8,
+        "hasRealName": true,
+        "amenity": "hotel"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7640, 30.7240], [76.7670, 30.7240], [76.7670, 30.7215], [76.7640, 30.7215], [76.7640, 30.7240]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1011,
+      "properties": {
+        "id": 1011,
+        "name": "GMCH Hospital Complex",
+        "address": "Sector 32, Chandigarh",
+        "building": "hospital",
+        "buildingType": "hospital",
+        "levels": 6,
+        "hasRealName": true,
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.7790, 30.7120], [76.7825, 30.7120], [76.7825, 30.7090], [76.7790, 30.7090], [76.7790, 30.7120]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 1012,
+      "properties": {
+        "id": 1012,
+        "name": "Elante Complex",
+        "address": "Industrial Area Phase I, Chandigarh",
+        "building": "retail",
+        "buildingType": "mall",
+        "levels": 5,
+        "hasRealName": true,
+        "amenity": "marketplace"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[76.8030, 30.7070], [76.8070, 30.7070], [76.8070, 30.7030], [76.8030, 30.7030], [76.8030, 30.7070]]]
+      }
+    }
+  ]
+}

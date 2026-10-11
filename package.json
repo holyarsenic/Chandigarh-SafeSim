@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.27.0",
+    "@neondatabase/serverless": "^1.2.0",
     "@turf/turf": "^7.4.0",
     "@types/geojson": "^7946.0.16",
     "lucide-react": "^1.52.0",
