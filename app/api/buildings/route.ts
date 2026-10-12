@@ -104,7 +104,11 @@ function getBuildingName(
     .find(Boolean);
 
   if (realName) {
-    return { name: realName, address, hasRealName: true };
+    return {
+      name: realName,
+      address,
+      hasRealName: true,
+    };
   }
 
   const category =
@@ -264,9 +268,7 @@ function toBuildingFeature(
   };
 }
 
-//Validate and normalize the locally stored GeoJSON.
-// Keep the fallback in the same response format as live data.
-
+// Return local Chandigarh data when live data is unavailable.
 function getLocalFallback(): BuildingsResponse {
   const features = buildingsData.features as BuildingFeature[];
 
@@ -282,7 +284,7 @@ function getLocalFallback(): BuildingsResponse {
 }
 
 export async function GET() {
-  // Reuse a successful live result while the cache is valid.
+  // Reuse successful live data while its cache is valid.
   if (cachedData && cachedData.expiresAt > Date.now()) {
     return NextResponse.json(cachedData.data);
   }
@@ -298,6 +300,7 @@ export async function GET() {
 
   const errors: string[] = [];
 
+  // Try each Overpass server independently.
   for (const server of OVERPASS_SERVERS) {
     try {
       console.log("Fetching building footprints from:", server);
@@ -313,6 +316,7 @@ export async function GET() {
         cache: "no-store",
       });
 
+      // HTTP 502/504 responses do not automatically throw.
       if (!response.ok) {
         errors.push(`${server}: HTTP ${response.status}`);
         continue;
@@ -352,7 +356,7 @@ export async function GET() {
       console.log(`Loaded ${features.length} OpenStreetMap buildings.`);
 
       return NextResponse.json(data);
-    } catch (error) {
+    } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : String(error);
 
@@ -361,7 +365,7 @@ export async function GET() {
     }
   }
 
-  // All Overpass servers failed: return local data instead of HTTP 502.
+  // All Overpass servers failed: return local data, not HTTP 502.
   console.warn(
     "All Overpass servers failed. Returning local Chandigarh fallback data.",
     errors,
@@ -369,7 +373,6 @@ export async function GET() {
 
   return NextResponse.json({
     ...fallback,
-    // Indicates why the local dataset was used, useful for debugging.
     fallbackReason: "Live building data is temporarily unavailable.",
   });
 }

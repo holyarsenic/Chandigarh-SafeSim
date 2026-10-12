@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       },
       properties: {
         name: body.building_name || "Chandigarh Structure",
+        scenario: body.scenario || "building-collapse",
         radius: radius,
         hazard_index: hazardIndex,
       },
