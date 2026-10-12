@@ -1,14 +1,29 @@
 import { NextResponse } from "next/server";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
 
 export const maxDuration = 60;
 
 const BOUNDS = "30.71,76.75,30.76,76.81";
 
+// Ordered by reliability — main server first, mirrors after
 const OVERPASS_SERVERS = [
-  "https://overpass.kumi.systems/api/interpreter",
   "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ];
+
+// 6 hours — building footprints are static map data
+const MEMORY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+// 24 hours for disk cache
+const DISK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const CACHE_DIR = path.join(process.cwd(), ".next", "cache", "buildings");
+const CACHE_FILE = path.join(CACHE_DIR, "buildings.json");
+// Pre-fetched static data (created by scripts/prefetch-buildings.mjs)
+const STATIC_FILE = path.join(process.cwd(), "public", "data", "buildings.json");
 
 type OverpassElement = {
   type: string;
@@ -53,10 +68,61 @@ type BuildingsResponse = {
   };
 };
 
+// ── In-memory cache ──────────────────────────────────────────────────
 let cachedData: {
   expiresAt: number;
   data: BuildingsResponse;
 } | null = null;
+
+// ── Disk cache helpers ───────────────────────────────────────────────
+async function readDiskCache(): Promise<BuildingsResponse | null> {
+  try {
+    const raw = await readFile(CACHE_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      expiresAt: number;
+      data: BuildingsResponse;
+    };
+    if (parsed.expiresAt > Date.now()) {
+      console.log("Loaded buildings from disk cache.");
+      return parsed.data;
+    }
+  } catch {
+    // cache miss or corrupt — fine, we'll fetch fresh
+  }
+  return null;
+}
+
+async function writeDiskCache(data: BuildingsResponse): Promise<void> {
+  try {
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(
+      CACHE_FILE,
+      JSON.stringify({ expiresAt: Date.now() + DISK_CACHE_TTL_MS, data }),
+    );
+  } catch (err) {
+    console.warn("Could not write buildings disk cache:", err);
+  }
+}
+
+// Pre-fetched static file (instant, no expiry — it's committed data)
+async function readStaticData(): Promise<BuildingsResponse | null> {
+  try {
+    const raw = await readFile(STATIC_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as BuildingsResponse;
+    if (parsed.success && parsed.data?.features?.length > 0) {
+      console.log(`Serving ${parsed.count} buildings from static file.`);
+      return parsed;
+    }
+  } catch {
+    // static file doesn't exist yet — run scripts/prefetch-buildings.mjs
+  }
+  return null;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function cleanTag(value?: string): string | null {
   const cleaned = value?.trim();
@@ -265,11 +331,28 @@ function toBuildingFeature(
   };
 }
 
+// ── Route handler ────────────────────────────────────────────────────
 export async function GET() {
+  // 1. Check in-memory cache first (instant)
   if (cachedData && cachedData.expiresAt > Date.now()) {
     return NextResponse.json(cachedData.data);
   }
 
+  // 2. Check pre-fetched static file (< 50ms, no expiry)
+  const staticData = await readStaticData();
+  if (staticData) {
+    cachedData = { data: staticData, expiresAt: Date.now() + MEMORY_CACHE_TTL_MS };
+    return NextResponse.json(staticData);
+  }
+
+  // 3. Check disk cache (survives dev-server restarts)
+  const diskData = await readDiskCache();
+  if (diskData) {
+    cachedData = { data: diskData, expiresAt: Date.now() + MEMORY_CACHE_TTL_MS };
+    return NextResponse.json(diskData);
+  }
+
+  // 3. Fetch from Overpass servers with delays between retries
   const [south, west, north, east] = BOUNDS.split(",").map(Number);
 
   const query = `
@@ -280,15 +363,23 @@ export async function GET() {
 
   const errors: string[] = [];
 
-  for (const server of OVERPASS_SERVERS) {
+  for (let i = 0; i < OVERPASS_SERVERS.length; i++) {
+    const server = OVERPASS_SERVERS[i];
+
+    // Wait 2 seconds between retries to avoid hammering servers
+    if (i > 0) {
+      console.log(`Waiting 2s before trying next Overpass server...`);
+      await sleep(2000);
+    }
+
     try {
-      console.log("Fetching building footprints from:", server);
+      console.log(`Fetching building footprints from: ${server}`);
 
       const response = await fetch(server, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "ChandigarhSafeSim/1.0",
+          "User-Agent": "ChandigarhSafeSim/1.0 (educational-project)",
         },
         body: new URLSearchParams({ data: query }).toString(),
         signal: AbortSignal.timeout(50_000),
@@ -326,12 +417,14 @@ export async function GET() {
         },
       };
 
+      // Populate both caches
       cachedData = {
         data,
-        expiresAt: Date.now() + 30 * 60 * 1000,
+        expiresAt: Date.now() + MEMORY_CACHE_TTL_MS,
       };
+      await writeDiskCache(data);
 
-      console.log(`Loaded ${features.length} building footprints.`);
+      console.log(`Loaded ${features.length} building footprints from ${server}.`);
 
       return NextResponse.json(data);
     } catch (error) {

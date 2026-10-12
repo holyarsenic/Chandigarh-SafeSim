@@ -855,13 +855,10 @@ export default function BuildingCollapseMap({
           map.getCanvas().style.cursor = "";
         });
 
-        const response = await fetch("/api/buildings");
-
-        if (!response.ok) {
-          throw new Error(`Buildings API returned ${response.status}.`);
-        }
-
-        const result: {
+        // Retry with exponential backoff — Overpass mirrors may need time
+        const MAX_RETRIES = 3;
+        let lastError: Error | null = null;
+        let result: {
           success?: boolean;
           count?: number;
           data?: {
@@ -869,12 +866,32 @@ export default function BuildingCollapseMap({
             features: Feature[];
           };
           error?: string;
-        } = await response.json();
+        } | null = null;
 
-        if (!result.success || !result.data?.features) {
-          throw new Error(
-            result.error || "The API returned no building features."
-          );
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          if (attempt > 0) {
+            const delay = Math.pow(3, attempt) * 1000; // 3s, 9s
+            console.log(`[BuildingCollapseMap] Retry ${attempt}/${MAX_RETRIES - 1} in ${delay / 1000}s...`);
+            await new Promise((r) => setTimeout(r, delay));
+          }
+
+          try {
+            const response = await fetch("/api/buildings");
+
+            if (!response.ok) {
+              lastError = new Error(`Buildings API returned ${response.status}.`);
+              continue;
+            }
+
+            result = await response.json();
+            break;
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+          }
+        }
+
+        if (!result || !result.success || !result.data?.features) {
+          throw lastError ?? new Error(result?.error || "The API returned no building features.");
         }
 
         const features = result.data.features
