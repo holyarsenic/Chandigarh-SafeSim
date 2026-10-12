@@ -23,10 +23,10 @@ export async function GET() {
       count: records.length,
       data: records,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[GET /api/history]", err);
     return NextResponse.json(
-      { success: false, error: err?.message },
+      { success: false, error: err instanceof Error ? err?.message : "An unexpected error occurred" },
       { status: 500 }
     );
   }
@@ -81,10 +81,10 @@ export async function POST(request: Request) {
       source: "neon-db",
       data: inserted,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[POST /api/history]", err);
     return NextResponse.json(
-      { success: false, error: err?.message },
+      { success: false, error: err instanceof Error ? err.message : "An unexpected error occurred"},
       { status: 500 }
     );
   }
