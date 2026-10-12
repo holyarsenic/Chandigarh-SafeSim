@@ -219,6 +219,23 @@ export default function Home() {
     setSelectedBuilding(building);
     resetRecommendations();
     setRetryCount(0);
+
+    fetch("/api/history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      building_name: building?.name || "Chandigarh Structure",
+      scenario: scenario || "Urban Collapse Simulation",
+      impact_radius: radius || 250,
+      affected_count: 1,
+      metadata: {
+        id: building?.id,
+        levels: building?.levels ?? null,
+        type: building?.type ?? "general",
+      },
+    }),
+  }).catch((err) => console.error("Neon DB audit logging failed:", err));
+        
   }
 
   function clearSimulation() {
