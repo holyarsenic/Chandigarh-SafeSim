@@ -23,10 +23,10 @@ export async function GET() {
       count: records.length,
       data: records,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[GET /api/history]", err);
     return NextResponse.json(
-      { success: false, error: err?.message },
+      { success: false, error: err instanceof Error ? err?.message : "An unexpected error occurred" },
       { status: 500 }
     );
   }
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       },
       properties: {
         name: body.building_name || "Chandigarh Structure",
+        scenario: body.scenario || "building-collapse",
         radius: radius,
         hazard_index: hazardIndex,
       },
@@ -81,10 +82,10 @@ export async function POST(request: Request) {
       source: "neon-db",
       data: inserted,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[POST /api/history]", err);
     return NextResponse.json(
-      { success: false, error: err?.message },
+      { success: false, error: err instanceof Error ? err.message : "An unexpected error occurred"},
       { status: 500 }
     );
   }
