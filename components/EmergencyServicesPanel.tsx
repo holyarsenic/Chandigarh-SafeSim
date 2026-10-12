@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Info
 } from "lucide-react";
 
 type EmergencyFacility = {
@@ -751,13 +752,12 @@ export default function EmergencyServicesPanel({
         </>
       )}
 
-      <div className="mt-3 flex items-start gap-2 border-t border-slate-100 pt-3">
-        <AlertTriangle
-          size={13}
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <Info
+          size={15}
           className="mt-0.5 shrink-0 text-amber-700"
         />
-
-        <p className="text-[10px] leading-4 text-slate-500">
+        <p className="text-[10px] leading-4 text-amber-900">
           Distances are approximate straight-line measurements,
           not road distances or travel times. OpenStreetMap data
           may be incomplete or outdated. AI-generated guidance

@@ -5,6 +5,7 @@ import {AlertTriangle, Building2, Waves, Flame, Activity, MapPin, ShieldCheck, C
 import Image from "next/image";
 
 import BuildingCollapseMap, { type SelectedBuilding } from "@/components/BuildingCollapseMap";
+import Button from "@/components/ui/button";
 import EmergencyServicesPanel from "@/components/EmergencyServicesPanel";
 import SimulationHistory from "@/components/History/SimulationHistory";
 
@@ -394,17 +395,19 @@ export default function Home() {
           target="_blank"
           rel="noopener noreferrer"
           aria-label="View Chandigarh-SafeSim on GitHub"
-          className="hidden items-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-medium text-white transition hover:bg-gray-800 sm:inline-flex"
+          className="hidden sm:inline-flex"
         >
-          <Image
-            src="https://github.githubassets.com/favicons/favicon.svg"
-            alt="GitHub"
-            width={20}
-            height={20}
-            unoptimized
-            className="brightness-0 invert"
-          />
-          <span>GitHub</span>
+          <Button>
+             <Image
+                src="https://github.githubassets.com/favicons/favicon.svg"
+                alt="GitHub"
+                width={20}
+                height={20}
+                unoptimized
+                className="brightness-0 invert"
+              />
+              <span>GitHub</span>
+          </Button>
         </a>
       </header>
 
@@ -444,9 +447,9 @@ export default function Home() {
                   onClick={() => changeScenario(item.id)}
                   className={`w-full rounded-xl border p-3 text-left transition ${
                     isActive
-                      ? "border-blue-300 bg-blue-50 ring-1 ring-blue-100"
+                      ? "border-blue-300 cursor-pointer bg-blue-50 ring-1 ring-blue-100"
                       : isAvailable
-                        ? "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                        ? "border-slate-200 cursor-pointer bg-white hover:border-slate-300 hover:bg-slate-50"
                         : "cursor-not-allowed border-slate-100 bg-slate-50 opacity-70"
                   }`}
                 >
