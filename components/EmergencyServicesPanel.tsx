@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,13 +12,14 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Info,
 } from "lucide-react";
 
 type EmergencyFacility = {
   id: string | number;
   name?: string | null;
   type?: string | null;
-  location: [number, number];
+  location: [number, number]; // [longitude, latitude]
   straightLineMeters: number;
   directionsUrl?: string | null;
 };
@@ -29,27 +31,37 @@ type FacilitiesResponse = {
   error?: string;
 };
 
-type GuidanceItem = {
-  title: string;
-  description: string;
+type EmergencyGuidance = {
+  immediateActions: string[];
+  evacuationInstructions: string[];
+  ifTrapped: string[];
+  precautions: string[];
+  nextSteps: string[];
 };
 
-type EmergencyGuidance = {
-  summary: string;
-  nearestFacility: string;
-  recommendedActions: string[];
-  precautions: GuidanceItem[];
-  nextSteps: string[];
+type NearestFacility = {
+  id: string;
+  name: string;
+  type: string;
+  longitude: number;
+  latitude: number;
+  straightLineMeters: number;
+  distanceLabel: string;
+  directionsUrl: string | null;
+  warning?: string;
 };
 
 type GuidanceResponse = {
   success?: boolean;
-  data?: EmergencyGuidance;
   provider?: "gemma" | "built-in";
-  fallback?: boolean;
+  scenario?: "building-collapse" | "major-fire";
+  emergencyNumber?: string;
+  guidance?: EmergencyGuidance;
+  nearestFacility?: NearestFacility | null;
+  facilityNotice?: string | null;
+  disclaimer?: string;
   error?: string;
 };
-
 
 type FacilitiesState = {
   key: string;
@@ -60,6 +72,7 @@ type FacilitiesState = {
 type GuidanceState = {
   key: string;
   data: EmergencyGuidance | null;
+  nearestFacility: NearestFacility | null;
   provider: "gemma" | "built-in" | null;
   error: string | null;
 };
@@ -111,7 +124,9 @@ function getDirectionsUrl(facility: EmergencyFacility): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
 }
 
-function isEmergencyFacility(value: unknown): value is EmergencyFacility {
+function isEmergencyFacility(
+  value: unknown
+): value is EmergencyFacility {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -131,7 +146,16 @@ function isEmergencyFacility(value: unknown): value is EmergencyFacility {
   );
 }
 
-function isEmergencyGuidance(value: unknown): value is EmergencyGuidance {
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "string")
+  );
+}
+
+function isEmergencyGuidance(
+  value: unknown
+): value is EmergencyGuidance {
   if (typeof value !== "object" || value === null) {
     return false;
   }
@@ -139,22 +163,37 @@ function isEmergencyGuidance(value: unknown): value is EmergencyGuidance {
   const item = value as Partial<EmergencyGuidance>;
 
   return (
-    typeof item.summary === "string" &&
-    typeof item.nearestFacility === "string" &&
-    Array.isArray(item.recommendedActions) &&
-    item.recommendedActions.every(
-      (action) => typeof action === "string"
-    ) &&
-    Array.isArray(item.precautions) &&
-    item.precautions.every(
-      (precaution) =>
-        typeof precaution === "object" &&
-        precaution !== null &&
-        typeof precaution.title === "string" &&
-        typeof precaution.description === "string"
-    ) &&
-    Array.isArray(item.nextSteps) &&
-    item.nextSteps.every((step) => typeof step === "string")
+    isStringArray(item.immediateActions) &&
+    isStringArray(item.evacuationInstructions) &&
+    isStringArray(item.ifTrapped) &&
+    isStringArray(item.precautions) &&
+    isStringArray(item.nextSteps)
+  );
+}
+
+function GuidanceList({
+  title,
+  items,
+}: {
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div>
+      <p className="text-xs font-bold text-slate-900">{title}</p>
+
+      {items.length > 0 ? (
+        <ul className="mt-1 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+          {items.map((item, index) => (
+            <li key={`${index}-${item}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-xs text-slate-500">
+          No additional instructions provided.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -229,12 +268,17 @@ export default function EmergencyServicesPanel({
       ? guidanceState.error
       : null;
 
+  const nearestFacility =
+    guidanceState?.key === guidanceRequestKey
+      ? guidanceState.nearestFacility
+      : null;
+
   const guidanceLoading =
     guidanceRequestKey !== null &&
     guidanceLoadingKey === guidanceRequestKey &&
     guidanceState?.key !== guidanceRequestKey;
 
-  // Fetch nearby facilities for the selected map location.
+  // Load nearby emergency facilities.
   useEffect(() => {
     if (!location || !facilitiesRequestKey) {
       return;
@@ -253,9 +297,7 @@ export default function EmergencyServicesPanel({
     const requestKey = facilitiesRequestKey;
 
     async function fetchFacilities(): Promise<void> {
-      if (controller.signal.aborted) {
-        return;
-      }
+      if (controller.signal.aborted) return;
 
       setFacilitiesLoadingKey(requestKey);
 
@@ -287,7 +329,7 @@ export default function EmergencyServicesPanel({
         const result =
           (await response.json()) as FacilitiesResponse;
 
-        if (!response.ok) {
+        if (!response.ok || result.success === false) {
           throw new Error(
             result.error ||
               `Could not load facilities (HTTP ${response.status}).`
@@ -309,9 +351,7 @@ export default function EmergencyServicesPanel({
             a.straightLineMeters - b.straightLineMeters
         );
 
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
 
         setFacilitiesState({
           key: requestKey,
@@ -341,19 +381,16 @@ export default function EmergencyServicesPanel({
 
     void fetchFacilities();
 
-    return () => {
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [location, facilitiesRequestKey]);
 
-  // Generate guidance using the actual facilities returned by the API.
+  // Generate guidance after facilities load, even if none are found.
   useEffect(() => {
     if (
       !location ||
       !locationKey ||
       !guidanceRequestKey ||
-      !facilitiesReady ||
-      currentFacilities.length === 0
+      !facilitiesReady
     ) {
       return;
     }
@@ -361,50 +398,42 @@ export default function EmergencyServicesPanel({
     const controller = new AbortController();
     const requestKey = guidanceRequestKey;
 
-    const longitude = location[0];
-    const latitude = location[1];
+    const [longitude, latitude] = location;
 
     async function fetchGuidance(): Promise<void> {
-      if (controller.signal.aborted) {
-        return;
-      }
+      if (controller.signal.aborted) return;
 
       setGuidanceLoadingKey(requestKey);
 
       try {
-        const response = await fetch(
-          "/api/emergency-guidance",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
+        const response = await fetch("/api/emergency-guidance", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            buildingName,
+            scenario,
+            location: {
+              longitude,
+              latitude,
             },
-            signal: controller.signal,
-            body: JSON.stringify({
-              buildingName,
-              scenario,
-              location: {
-                longitude,
-                latitude,
-              },
-              facilities: currentFacilities
-                .slice(0, 10)
-                .map((facility) => ({
-                  id: String(facility.id),
-                  name:
-                    facility.name?.trim() ||
-                    "Unnamed mapped facility",
-                  type:
-                    facility.type ?? "Emergency service",
-                  longitude: facility.location[0],
-                  latitude: facility.location[1],
-                  straightLineMeters:
-                    facility.straightLineMeters,
-                  directionsUrl: getDirectionsUrl(facility),
-                })),
-            }),
-          }
-        );
+            facilities: currentFacilities.slice(0, 10).map(
+              (facility) => ({
+                id: String(facility.id),
+                name:
+                  facility.name?.trim() ||
+                  "Unnamed mapped facility",
+                type: facility.type ?? "Emergency service",
+                longitude: facility.location[0],
+                latitude: facility.location[1],
+                straightLineMeters: facility.straightLineMeters,
+                directionsUrl: getDirectionsUrl(facility),
+              })
+            ),
+          }),
+        });
 
         const contentType =
           response.headers.get("content-type") ?? "";
@@ -421,7 +450,7 @@ export default function EmergencyServicesPanel({
         if (
           !response.ok ||
           !result.success ||
-          !isEmergencyGuidance(result.data)
+          !isEmergencyGuidance(result.guidance)
         ) {
           throw new Error(
             result.error ||
@@ -429,13 +458,12 @@ export default function EmergencyServicesPanel({
           );
         }
 
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
 
         setGuidanceState({
           key: requestKey,
-          data: result.data,
+          data: result.guidance,
+          nearestFacility: result.nearestFacility ?? null,
           provider: result.provider ?? "built-in",
           error: null,
         });
@@ -451,6 +479,7 @@ export default function EmergencyServicesPanel({
           setGuidanceState({
             key: requestKey,
             data: null,
+            nearestFacility: null,
             provider: null,
             error:
               err instanceof Error
@@ -463,9 +492,7 @@ export default function EmergencyServicesPanel({
 
     void fetchGuidance();
 
-    return () => {
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [
     location,
     locationKey,
@@ -475,6 +502,8 @@ export default function EmergencyServicesPanel({
     buildingName,
     scenario,
   ]);
+
+  const refresh = () => setRetryCount((count) => count + 1);
 
   return (
     <section className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
@@ -495,12 +524,10 @@ export default function EmergencyServicesPanel({
         {location && (
           <button
             type="button"
-            onClick={() =>
-              setRetryCount((count) => count + 1)
-            }
+            onClick={refresh}
             disabled={loading}
             aria-label="Refresh emergency services"
-            title="Refresh facilities"
+            title="Refresh facilities and guidance"
             className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw
@@ -514,8 +541,8 @@ export default function EmergencyServicesPanel({
       {!location ? (
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs leading-5 text-slate-600">
-            Select a building on the map to find nearby
-            emergency facilities.
+            Select a building on the map to find nearby emergency
+            facilities and get emergency guidance.
           </p>
         </div>
       ) : loading ? (
@@ -550,9 +577,7 @@ export default function EmergencyServicesPanel({
 
               <button
                 type="button"
-                onClick={() =>
-                  setRetryCount((count) => count + 1)
-                }
+                onClick={refresh}
                 className="mt-2 inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-200"
               >
                 <RefreshCw size={12} />
@@ -574,8 +599,8 @@ export default function EmergencyServicesPanel({
       ) : currentFacilities.length === 0 ? (
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-xs leading-5 text-slate-600">
-            No matching facilities were returned. This does
-            not confirm that no emergency services exist nearby.
+            No matching facilities were returned. This does not
+            confirm that no emergency services exist nearby.
           </p>
         </div>
       ) : (
@@ -615,9 +640,7 @@ export default function EmergencyServicesPanel({
 
                       <div className="mt-2 flex flex-wrap items-center gap-1 text-xs font-semibold text-emerald-700">
                         <MapPin size={12} />
-                        {formatDistance(
-                          facility.straightLineMeters
-                        )}
+                        {formatDistance(facility.straightLineMeters)}
                         <span className="font-normal text-slate-500">
                           straight-line distance
                         </span>
@@ -638,131 +661,158 @@ export default function EmergencyServicesPanel({
               );
             })}
           </div>
-
-          <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <Sparkles
-                size={15}
-                className="text-indigo-700"
-              />
-
-              <h4 className="text-xs font-bold text-indigo-950">
-                AI Emergency Guidance
-              </h4>
-
-              {guidanceProvider && (
-                <span className="ml-auto rounded-full bg-white px-2 py-1 text-[9px] font-semibold text-indigo-700">
-                  {guidanceProvider === "gemma"
-                    ? "Gemma"
-                    : "Built-in guidance"}
-                </span>
-              )}
-            </div>
-
-            {guidanceLoading ? (
-              <div className="flex items-center gap-2 py-2 text-xs text-indigo-800">
-                <LoaderCircle
-                  size={15}
-                  className="animate-spin"
-                />
-                Gemma is reviewing the mapped facilities and
-                distances...
-              </div>
-            ) : guidanceError ? (
-              <p className="text-xs leading-5 text-amber-800">
-                AI guidance could not be generated:{" "}
-                {guidanceError} The facility list and directions
-                links are still available.
-              </p>
-            ) : guidance ? (
-              <div className="space-y-3">
-                <p className="text-xs leading-5 text-slate-700">
-                  {guidance.summary}
-                </p>
-
-                <div>
-                  <p className="text-xs font-bold text-slate-900">
-                    Nearest mapped option
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-700">
-                    {guidance.nearestFacility}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold text-slate-900">
-                    What to do
-                  </p>
-                  <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs leading-5 text-slate-700">
-                    {guidance.recommendedActions.map(
-                      (action, index) => (
-                        <li key={`${index}-${action}`}>
-                          {action}
-                        </li>
-                      )
-                    )}
-                  </ol>
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold text-slate-900">
-                    Precautions
-                  </p>
-
-                  <div className="mt-1 space-y-2">
-                    {guidance.precautions.map(
-                      (item, index) => (
-                        <div key={`${index}-${item.title}`}>
-                          <p className="text-xs font-semibold text-slate-800">
-                            {item.title}
-                          </p>
-                          <p className="text-xs leading-5 text-slate-600">
-                            {item.description}
-                          </p>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-bold text-slate-900">
-                    Next steps
-                  </p>
-                  <ul className="mt-1 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
-                    {guidance.nextSteps.map((step, index) => (
-                      <li key={`${index}-${step}`}>
-                        {step}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 py-2 text-xs text-indigo-800">
-                <LoaderCircle
-                  size={15}
-                  className="animate-spin"
-                />
-                Preparing emergency guidance...
-              </div>
-            )}
-          </div>
         </>
       )}
 
-      <div className="mt-3 flex items-start gap-2 border-t border-slate-100 pt-3">
-        <AlertTriangle
-          size={13}
+      {/* New emergency guidance output */}
+      {location && facilitiesReady && (
+        <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
+          <div className="mb-3 flex items-center gap-2">
+            <Sparkles size={16} className="text-indigo-700" />
+
+            <h4 className="text-xs font-bold text-indigo-950">
+              AI Emergency Guidance
+            </h4>
+
+            {guidanceProvider && (
+              <span className="ml-auto rounded-full bg-white px-2 py-1 text-[9px] font-semibold text-indigo-700">
+                {guidanceProvider === "gemma"
+                  ? "Gemma"
+                  : "Built-in guidance"}
+              </span>
+            )}
+          </div>
+
+          {guidanceLoading || (!guidance && !guidanceError) ? (
+            <div className="flex items-center gap-2 py-2 text-xs text-indigo-800">
+              <LoaderCircle size={15} className="animate-spin" />
+              Preparing emergency guidance...
+            </div>
+          ) : guidanceError ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs leading-5 text-amber-900">
+                Guidance could not be generated: {guidanceError}
+              </p>
+              <button
+                type="button"
+                onClick={refresh}
+                className="mt-2 inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1.5 text-xs font-semibold text-amber-900"
+              >
+                <RefreshCw size={12} />
+                Retry
+              </button>
+            </div>
+          ) : guidance ? (
+            <div className="space-y-4">
+              <div className="rounded-md border border-red-200 bg-red-50 p-3">
+                <p className="text-xs font-bold text-red-900">
+                  <AlertTriangle
+                    size={14}
+                    className="mr-1 inline"
+                  />
+                  Immediate actions
+                </p>
+
+                <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-5 text-red-950">
+                  {guidance.immediateActions.map((action, index) => (
+                    <li key={`${index}-${action}`}>{action}</li>
+                  ))}
+                </ol>
+              </div>
+
+              <GuidanceList
+                title="Evacuation instructions"
+                items={guidance.evacuationInstructions}
+              />
+
+              <GuidanceList
+                title="If trapped"
+                items={guidance.ifTrapped}
+              />
+
+              <GuidanceList
+                title="Precautions"
+                items={guidance.precautions}
+              />
+
+              <GuidanceList
+                title="Next steps"
+                items={guidance.nextSteps}
+              />
+
+              <div>
+                <p className="text-xs font-bold text-slate-900">
+                  Nearest mapped emergency facility
+                </p>
+
+                {nearestFacility ? (
+                  <div className="mt-2 rounded-md border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold text-slate-900">
+                      {nearestFacility.name}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-600">
+                      {nearestFacility.type.replaceAll("_", " ")}{" "}
+                      ·{" "}
+                      {nearestFacility.distanceLabel ||
+                        formatDistance(
+                          nearestFacility.straightLineMeters
+                        )}
+                    </p>
+
+                    {nearestFacility.warning && (
+                      <p className="mt-2 text-xs leading-5 text-amber-800">
+                        {nearestFacility.warning}
+                      </p>
+                    )}
+
+                    {nearestFacility.directionsUrl && (
+                      <a
+                        href={nearestFacility.directionsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+                      >
+                        Open directions <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    No nearby facility was identified from the mapped
+                    data. Contact emergency services for assistance.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-md bg-white p-3">
+                <p className="text-xs font-bold text-slate-900">
+                  Emergency number
+                </p>
+                <a
+                  href="tel:112"
+                  className="mt-1 inline-flex items-center gap-2 text-sm font-bold text-red-700"
+                >
+                  112 — India emergency services
+                </a>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <Info
+          size={15}
           className="mt-0.5 shrink-0 text-amber-700"
         />
-
-        <p className="text-[10px] leading-4 text-slate-500">
-          Distances are approximate straight-line measurements,
-          not road distances or travel times. OpenStreetMap data
-          may be incomplete or outdated. AI-generated guidance
-          is advisory and does not verify availability or road
-          safety. For an actual emergency in India, call 112.
+        <p className="text-[10px] leading-4 text-amber-900">
+          Distances are approximate straight-line measurements, not
+          road distances or travel times. OpenStreetMap data may be
+          incomplete or outdated. AI-generated guidance does not
+          verify facility availability, building stability, or road
+          safety. For an actual emergency in India, call 112 and
+          follow emergency responders&apos; instructions.
         </p>
       </div>
     </section>

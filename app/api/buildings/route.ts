@@ -5,7 +5,6 @@ import path from "node:path";
 export const maxDuration = 60;
 
 const BOUNDS = "30.71,76.75,30.76,76.81";
-const CACHE_DURATION = 30 * 60 * 1000;
 
 // Ordered by reliability — main server first, mirrors after
 const OVERPASS_SERVERS = [
@@ -332,6 +331,16 @@ function toBuildingFeature(
     },
   };
 }
+
+const fallback: BuildingsResponse = {
+  success: true,
+  count: 0,
+  source: "local-fallback",
+  data: {
+    type: "FeatureCollection",
+    features: [],
+  },
+};
 
 // ── Route handler ────────────────────────────────────────────────────
 export async function GET() {
