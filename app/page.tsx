@@ -1,31 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  AlertTriangle,
-  Building2,
-  Waves,
-  Flame,
-  Activity,
-  MapPin,
-  ShieldCheck,
-  Clock,
-  ChevronRight,
-  Target,
-  RotateCcw,
-  ClipboardCheck,
-  Users,
-  HardHat,
-  Info,
-  Sparkles,
-  RefreshCw,
-} from "lucide-react";
+import {AlertTriangle, Building2, Waves, Flame, Activity, MapPin, ShieldCheck, ChevronRight, Target, RotateCcw, ClipboardCheck, Users, HardHat, Info, Sparkles, RefreshCw} from "lucide-react";
 import Image from "next/image";
 
-import BuildingCollapseMap, {
-  type SelectedBuilding,
-} from "@/components/BuildingCollapseMap";
+import BuildingCollapseMap, { type SelectedBuilding } from "@/components/BuildingCollapseMap";
 import EmergencyServicesPanel from "@/components/EmergencyServicesPanel";
+import SimulationHistory from "@/components/History/SimulationHistory";
 
 const SCENARIOS = [
   {
@@ -219,6 +200,25 @@ export default function Home() {
     setSelectedBuilding(building);
     resetRecommendations();
     setRetryCount(0);
+
+    fetch("/api/history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+    building_name: building.name || "Chandigarh Structure",
+    scenario,
+    latitude: building.location[1],
+    longitude: building.location[0],
+    impact_radius: radius,
+    hazard_index: 0,
+    metadata: {
+      id: building.id,
+      levels: building.levels ?? null,
+      type: building.type ?? "general",
+    },
+  }),
+  }).catch((err) => console.error("Neon DB audit logging failed:", err));
+        
   }
 
   function clearSimulation() {
@@ -967,10 +967,8 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="hidden items-center gap-1.5 text-xs text-slate-500 sm:flex">
-                <Clock size={13} />
-                Interactive simulation
-              </span>
+              
+              <SimulationHistory />
 
               <button
                 type="button"

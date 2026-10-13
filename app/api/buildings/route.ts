@@ -5,6 +5,7 @@ import path from "node:path";
 export const maxDuration = 60;
 
 const BOUNDS = "30.71,76.75,30.76,76.81";
+const CACHE_DURATION = 30 * 60 * 1000;
 
 // Ordered by reliability — main server first, mirrors after
 const OVERPASS_SERVERS = [
@@ -62,6 +63,7 @@ type BuildingFeature = {
 type BuildingsResponse = {
   success: boolean;
   count: number;
+  source: "openstreetmap" | "local-fallback";
   data: {
     type: "FeatureCollection";
     features: BuildingFeature[];
@@ -266,7 +268,7 @@ function getBuildingName(
 }
 
 function toBuildingFeature(
-  element: OverpassElement
+  element: OverpassElement,
 ): BuildingFeature | null {
   const geometry = element.geometry;
 
@@ -356,7 +358,7 @@ export async function GET() {
   const [south, west, north, east] = BOUNDS.split(",").map(Number);
 
   const query = `
-    [out:json][timeout:45];
+    [out:json][timeout:25];
     way["building"](${south},${west},${north},${east});
     out body geom;
   `;
@@ -382,10 +384,11 @@ export async function GET() {
           "User-Agent": "ChandigarhSafeSim/1.0 (educational-project)",
         },
         body: new URLSearchParams({ data: query }).toString(),
-        signal: AbortSignal.timeout(50_000),
+        signal: AbortSignal.timeout(12_000),
         cache: "no-store",
       });
 
+      // HTTP 502/504 responses do not automatically throw.
       if (!response.ok) {
         errors.push(`${server}: HTTP ${response.status}`);
         continue;
@@ -399,18 +402,18 @@ export async function GET() {
         .filter((element) => element.type === "way")
         .map(toBuildingFeature)
         .filter(
-          (feature): feature is BuildingFeature =>
-            feature !== null
+          (feature): feature is BuildingFeature => feature !== null,
         );
 
       if (features.length === 0) {
-        errors.push(`${server}: no building footprints returned`);
+        errors.push(`${server}: no valid building footprints returned`);
         continue;
       }
 
       const data: BuildingsResponse = {
         success: true,
         count: features.length,
+        source: "openstreetmap",
         data: {
           type: "FeatureCollection",
           features,
@@ -427,7 +430,7 @@ export async function GET() {
       console.log(`Loaded ${features.length} building footprints from ${server}.`);
 
       return NextResponse.json(data);
-    } catch (error) {
+    } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : String(error);
 
@@ -436,13 +439,14 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json(
-    {
-      success: false,
-      error:
-        "Could not load building data from any Overpass server. Please try again later.",
-      details: errors,
-    },
-    { status: 502 }
+  // All Overpass servers failed: return local data, not HTTP 502.
+  console.warn(
+    "All Overpass servers failed. Returning local Chandigarh fallback data.",
+    errors,
   );
+
+  return NextResponse.json({
+    ...fallback,
+    fallbackReason: "Live building data is temporarily unavailable.",
+  });
 }
