@@ -370,8 +370,8 @@ export default function Home() {
     <main className="flex min-h-screen flex-col text-slate-900 lg:h-screen lg:overflow-hidden">
       {/* Header */}
       <header className="z-10 flex h-16 shrink-0 items-center justify-between border-b border-background bg-foreground px-4 md:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-background text-white">
+        <div className="flex items-center gap-3 border-2 border-background border-r-4 border-r-[#803b39] border-b-4 border-b-[#803b39]  bg-[#E97B77] px-2 py-1">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-background text-white">
             <Image
               src="/favicon/favicon-96x96.png"
               alt="SafeSim"
@@ -382,10 +382,10 @@ export default function Home() {
           </div>
 
           <div>
-            <h1 className="text-lg font-bold tracking-tight">
+            <h1 className="text-base font-bold tracking-tight">
               Chandigarh SafeSim
             </h1>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-background">
               AI-powered urban safety simulation
             </p>
           </div>

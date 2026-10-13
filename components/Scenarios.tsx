@@ -57,7 +57,7 @@ export default function ScenarioSelector({
               backgroundColor: { duration: 0.18, ease: "easeInOut" },
               borderColor: { duration: 0.18, ease: "easeInOut" },
             }}
-            className={`relative w-full overflow-hidden rounded-xl border p-3 text-left shadow-sm ${
+            className={`relative w-full overflow-hidden border border-r-4 border-r-black border-b-4 border-b-black p-3 text-left shadow-sm ${
               isActive
                 ? "cursor-pointer"
                 : isAvailable
