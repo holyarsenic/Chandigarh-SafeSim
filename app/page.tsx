@@ -8,6 +8,7 @@ import BuildingCollapseMap, { type SelectedBuilding } from "@/components/Buildin
 import Button from "@/components/ui/button";
 import EmergencyServicesPanel from "@/components/EmergencyServicesPanel";
 import SimulationHistory from "@/components/History/SimulationHistory";
+import ScenarioSelector from "@/components/Scenarios";
 
 const SCENARIOS = [
   {
@@ -432,67 +433,14 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="space-y-2">
-            {SCENARIOS.map((item) => {
-              const Icon = item.icon;
-              const isActive = scenario === item.id;
-              const isAvailable =
-                item.status === "Available";
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={!isAvailable}
-                  onClick={() => changeScenario(item.id)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    isActive
-                      ? "border-blue-300 cursor-pointer bg-blue-50 ring-1 ring-blue-100"
-                      : isAvailable
-                        ? "border-slate-200 cursor-pointer bg-white hover:border-slate-300 hover:bg-slate-50"
-                        : "cursor-not-allowed border-slate-100 bg-slate-50 opacity-70"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                        isActive
-                          ? "bg-background text-white"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      <Icon size={20} />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold">
-                          {item.name}
-                        </span>
-
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            isAvailable
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-200 text-slate-600"
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        {item.description}
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <ScenarioSelector
+            scenarios={SCENARIOS}
+            scenario={scenario}
+            onScenarioChange={changeScenario}
+          />
 
           {/* Location */}
-          <div className="mt-6 rounded-xl border border-slate-200 p-4">
+          <div className="mt-6 rounded-xl border-2 border-background p-4">
             <div className="mb-3 flex items-center gap-2">
               <MapPin
                 size={17}
@@ -513,7 +461,7 @@ export default function Home() {
           </div>
 
           {/* Current scenario */}
-          <div className="mt-4 rounded-xl border border-slate-200 p-4">
+          <div className="mt-4 rounded-xl border-2 border-background p-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-bold">
                 Current scenario
@@ -544,7 +492,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-4 border-t border-slate-100 pt-3">
+            <div className="mt-4 border-t border-background pt-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-600">
                   Impact radius
@@ -562,10 +510,10 @@ export default function Home() {
                     key={level}
                     type="button"
                     onClick={() => setSeverity(level)}
-                    className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
+                    className={`rounded-lg border px-2 py-2 text-xs font-semibold transition cursor-pointer ${
                       severity === level
-                        ? "border-blue-300 bg-background text-white"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        ? "border-background bg-background text-white"
+                        : "border-background bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
                     {level}
@@ -584,7 +532,7 @@ export default function Home() {
           </div>
 
           {/* Simulation results */}
-          <div className="mt-4 rounded-xl border border-slate-200 p-4">
+          <div className="mt-4 rounded-xl border-2 border-background p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="text-sm font-bold">
                 Simulation results
@@ -603,7 +551,7 @@ export default function Home() {
             </div>
 
             {!selectedBuilding ? (
-              <div className="rounded-lg bg-slate-50 px-3 py-4 text-center">
+              <div className="rounded-lg border border-background bg-slate-50 px-3 py-4 text-center">
                 <Target
                   size={22}
                   className="mx-auto mb-2 text-slate-400"
@@ -618,7 +566,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="rounded-lg bg-slate-50 p-3">
+                <div className="rounded-lg border border-background bg-slate-50 p-3">
                   <p className="text-xs text-slate-500">
                     Selected building
                   </p>
@@ -666,13 +614,13 @@ export default function Home() {
                       Nearby building footprints
                     </p>
 
-                    <div className="max-h-40 space-y-2 overflow-y-auto">
+                    <div className="max-h-40 space-y-2 overflow-y-auto py-2 px-3">
                       {affectedBuildings
                         .slice(0, 12)
                         .map((building) => (
                           <div
                             key={building.id}
-                            className="flex items-start justify-between gap-2 rounded-lg border border-slate-100 p-2"
+                            className="flex items-start justify-between gap-2 rounded-lg bg-white border border-slate-100 p-2"
                           >
                             <div className="min-w-0">
                               <p className="wrap-break-word text-xs font-medium text-slate-700">

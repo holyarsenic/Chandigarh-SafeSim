@@ -230,7 +230,7 @@ export default function SimulationHistory() {
         <div
           role="dialog"
           aria-label="Simulation history"
-          className="absolute sm:right-1 md:right-0 top-full z-100 mt-2 w-[min(420px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+          className="absolute sm:right-1 lg:right-0 top-full z-100 mt-2 w-[min(400px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
         >
           {/* Panel header */}
           <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
@@ -321,7 +321,7 @@ export default function SimulationHistory() {
                 </div>
               </div>
             ) : records.length === 0 ? (
-              <div className="rounded-lg bg-slate-50 px-4 py-8 text-center">
+              <div className="rounded-lg bg-background px-4 py-8 text-center">
                 <History
                   size={26}
                   className="mx-auto mb-2 text-slate-400"
@@ -375,7 +375,7 @@ export default function SimulationHistory() {
                     return (
                       <article
                         key={record.id}
-                        className="rounded-lg border border-slate-200 bg-white p-3 transition hover:border-slate-300"
+                        className="rounded-lg border border-background bg-white p-3 transition hover:border-background/80"
                       >
                         <button
                           type="button"
