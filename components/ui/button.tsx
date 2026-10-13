@@ -25,12 +25,12 @@ export default function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      whileHover={{ scale: 1.03, y: -4, rotate: 1 }}
-      whileTap={{ scale: 0.97, y: 3, rotate: 0 }}
+      whileHover={{ scale: 1.03, rotate: 1 }}
+      whileTap={{ scale: 0.97, rotate: 0 }}
       transition={{ type: "spring", stiffness: 500, damping: 18 }}
-      className={`w-full cursor-pointer rounded-lg border-0 text-base shadow-[0_6px_0_#111] active:shadow-[0_1px_0_#111] disabled:cursor-not-allowed disabled:opacity-50 transition-shadow ${className}`}
+      className={`flex h-9 w-auto items-center gap-2 border-2 border-background bg-background px-3 text-background shadow-[0_3px_0_#64B5F6] hover:bg-background/90 active:shadow-none cursor-pointer ${className}`}
     >
-      <span className="flex items-center justify-center gap-2 rounded-lg border-[3px] border-foreground bg-background px-3 py-1 font-['Gochi_Hand',cursive] text-foreground">
+      <span className="flex gap-2 whitespace-nowrap text-sm font-bold font-['Gochi_Hand',cursive] text-foreground">
         {children ?? label}
       </span>
     </motion.button>

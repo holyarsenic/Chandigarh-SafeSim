@@ -321,7 +321,7 @@ export default function SimulationHistory() {
                 </div>
               </div>
             ) : records.length === 0 ? (
-              <div className="rounded-lg bg-background px-4 py-8 text-center">
+              <div className="rounded-lg bg-foreground px-4 py-8 text-center">
                 <History
                   size={26}
                   className="mx-auto mb-2 text-slate-400"

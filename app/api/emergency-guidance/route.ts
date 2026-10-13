@@ -133,8 +133,8 @@ async function generateWithGemma(prompt: string): Promise<string> {
         {
           role: "system",
           content: [
-            "You provide cautious emergency information, not professional rescue instructions.",
-            "Use only supplied facts. Never invent safe buildings, shelters, exits, roads, routes, distances, travel times, or facility availability.",
+            "You provide cautious emergency information, professional rescue instructions.",
+            "Use only supplied facts and make users to tell how escape using nearest safest location out of harmed placed. Never invent safe buildings, shelters, exits, roads, routes, distances, travel times, or facility availability.",
             "Do not claim that a facility is safe merely because it is nearby.",
             "Do not instruct people to travel through smoke, fire, debris, unstable structures, or blocked routes.",
             "For fire, prioritize leaving the fire area through a safe accessible exit, avoiding smoke, and following firefighters.",
