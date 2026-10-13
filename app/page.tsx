@@ -9,6 +9,7 @@ import Button from "@/components/ui/button";
 import EmergencyServicesPanel from "@/components/EmergencyServicesPanel";
 import SimulationHistory from "@/components/History/SimulationHistory";
 import ScenarioSelector from "@/components/Scenarios";
+import SignInButton from "@/components/ui/SignInButton";
 
 const SCENARIOS = [
   {
@@ -390,26 +391,29 @@ export default function Home() {
             </p>
           </div>
         </div>
+        <div className="flex gap-2 h-10">
+          <a
+            href="https://github.com/holyarsenic/Chandigarh-SafeSim"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="View Chandigarh-SafeSim on GitHub"
+            className="hidden sm:inline-flex">
+            <Button>
+              <Image
+                  src="https://github.githubassets.com/favicons/favicon.svg"
+                  alt="GitHub"
+                  width={20}
+                  height={20}
+                  unoptimized
+                  className="brightness-0 invert"
+                />
+                <span>GitHub</span>
+            </Button>
+          </a>
 
-        <a
-          href="https://github.com/holyarsenic/Chandigarh-SafeSim"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="View Chandigarh-SafeSim on GitHub"
-          className="hidden sm:inline-flex"
-        >
-          <Button>
-             <Image
-                src="https://github.githubassets.com/favicons/favicon.svg"
-                alt="GitHub"
-                width={20}
-                height={20}
-                unoptimized
-                className="brightness-0 invert"
-              />
-              <span>GitHub</span>
-          </Button>
-        </a>
+          <SignInButton />
+        </div>
+        
       </header>
 
       {/* Main workspace */}
