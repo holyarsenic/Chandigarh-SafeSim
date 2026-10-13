@@ -16,6 +16,7 @@ type BuildingProperties = {
   buildingType?: string;
   levels?: string | number | null;
   affected?: boolean;
+  selected?: boolean;
   hasRealName?: boolean | null;
   amenity?: string | null;
   healthcare?: string | null;
@@ -435,6 +436,16 @@ export default function BuildingCollapseMap({
   const [loading, setLoading] = useState(true);
   const [mapError, setMapError] = useState("");
 
+  // 3D mode state
+  const [is3D, setIs3D] = useState(false);
+  const is3DRef = useRef(false);
+  const [cornerRadius, setCornerRadius] = useState(5);
+  const [heightMultiplier, setHeightMultiplier] = useState(1.0);
+  const [extrusionOpacity, setExtrusionOpacity] = useState(0.8);
+  const cornerRadiusRef = useRef(5);
+  const heightMultiplierRef = useRef(1.0);
+  const extrusionOpacityRef = useRef(0.8);
+
   useEffect(() => {
     callbackRef.current = onBuildingSelect;
   }, [onBuildingSelect]);
@@ -496,6 +507,72 @@ export default function BuildingCollapseMap({
       duration: 800,
     });
   }, []);
+
+  // Toggle 3D mode
+  const toggle3D = useCallback(() => {
+    const next = !is3DRef.current;
+    setIs3D(next);
+    is3DRef.current = next;
+    const map = mapRef.current;
+    if (!map) return;
+    if (map.getLayer("buildings-3d")) {
+      map.setLayoutProperty("buildings-3d", "visibility", next ? "visible" : "none");
+    }
+    if (map.getLayer("buildings-fill")) {
+      map.setLayoutProperty("buildings-fill", "visibility", next ? "none" : "visible");
+    }
+    if (map.getLayer("affected-buildings-fill")) {
+      map.setLayoutProperty("affected-buildings-fill", "visibility", next ? "none" : "visible");
+    }
+    if (map.getLayer("selected-building-fill")) {
+      map.setLayoutProperty("selected-building-fill", "visibility", next ? "none" : "visible");
+    }
+    refreshRef.current?.();
+    map.easeTo({
+      pitch: next ? 58 : 0,
+      bearing: next ? -20 : 0,
+      duration: 900,
+    });
+  }, []);
+
+  // Sync cornerRadius to map layer
+  useEffect(() => {
+    cornerRadiusRef.current = cornerRadius;
+    const map = mapRef.current;
+    if (!map || !map.getLayer("buildings-3d")) return;
+    map.setLayoutProperty("buildings-3d", "fill-extrusion-rounded-corner-distance", cornerRadius);
+  }, [cornerRadius]);
+
+  // Sync heightMultiplier to map layer
+  useEffect(() => {
+    heightMultiplierRef.current = heightMultiplier;
+    const map = mapRef.current;
+    if (!map || !map.getLayer("buildings-3d")) return;
+    map.setPaintProperty("buildings-3d", "fill-extrusion-height", [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      12, 0,
+      14,
+      [
+        "max",
+        [
+          "*",
+          ["to-number", ["coalesce", ["get", "levels"], 2], 2],
+          3.5 * heightMultiplier,
+        ],
+        6 * heightMultiplier,
+      ],
+    ]);
+  }, [heightMultiplier]);
+
+  // Sync extrusionOpacity to map layer
+  useEffect(() => {
+    extrusionOpacityRef.current = extrusionOpacity;
+    const map = mapRef.current;
+    if (!map || !map.getLayer("buildings-3d")) return;
+    map.setPaintProperty("buildings-3d", "fill-extrusion-opacity", extrusionOpacity);
+  }, [extrusionOpacity]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -696,15 +773,58 @@ export default function BuildingCollapseMap({
           },
         });
 
+        // Add 3D fill-extrusion layer (initially hidden)
+        map.addLayer({
+          id: "buildings-3d",
+          type: "fill-extrusion",
+          source: "buildings-source",
+          layout: {
+            visibility: "none",
+            "fill-extrusion-rounded-corner-distance": cornerRadiusRef.current,
+          },
+          paint: {
+            "fill-extrusion-color": [
+              "case",
+              ["==", ["get", "selected"], true],
+              "#dc2626",
+              ["==", ["get", "affected"], true],
+              "#f97316",
+              "#38bdf8",
+            ],
+            "fill-extrusion-height": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              12, 0,
+              14,
+              [
+                "max",
+                [
+                  "*",
+                  ["to-number", ["coalesce", ["get", "levels"], 2], 2],
+                  3.5 * heightMultiplierRef.current,
+                ],
+                6 * heightMultiplierRef.current,
+              ],
+            ],
+            "fill-extrusion-base": 0,
+            "fill-extrusion-opacity": extrusionOpacityRef.current,
+          },
+        });
+
         const refreshSimulation = () => {
           const center = selectedLocationRef.current;
           const currentRadius = radiusRef.current;
           const selectedId = selectedIdRef.current;
 
           const updatedFeatures = buildingsRef.current.map((feature) => {
+            const isSelected =
+              selectedId !== null &&
+              Number(feature.properties?.id) === selectedId;
+
             const affected =
               center !== null &&
-              Number(feature.properties?.id) !== selectedId &&
+              !isSelected &&
               geometryIntersectsRadius(
                 feature.geometry,
                 center,
@@ -716,6 +836,7 @@ export default function BuildingCollapseMap({
               properties: {
                 ...feature.properties,
                 affected,
+                selected: isSelected,
               },
             };
           });
@@ -793,7 +914,11 @@ export default function BuildingCollapseMap({
 
         refreshRef.current = refreshSimulation;
 
-        map.on("click", "buildings-fill", (event) => {
+        const handleBuildingClick = (
+          event: maplibregl.MapLayerMouseEvent & {
+            features?: maplibregl.MapGeoJSONFeature[];
+          }
+        ) => {
           const clickedFeature = event.features?.[0];
           if (!clickedFeature) return;
 
@@ -831,7 +956,7 @@ export default function BuildingCollapseMap({
             "impact-zone"
           ) as maplibregl.GeoJSONSource;
 
-          impactSource.setData({
+          impactSource?.setData({
             type: "FeatureCollection",
             features: [
               makeCircle(location[0], location[1], radiusRef.current),
@@ -845,13 +970,24 @@ export default function BuildingCollapseMap({
           });
 
           refreshSimulation();
-        });
+        };
+
+        map.on("click", "buildings-fill", handleBuildingClick);
+        map.on("click", "buildings-3d", handleBuildingClick);
 
         map.on("mouseenter", "buildings-fill", () => {
           map.getCanvas().style.cursor = "pointer";
         });
 
         map.on("mouseleave", "buildings-fill", () => {
+          map.getCanvas().style.cursor = "";
+        });
+
+        map.on("mouseenter", "buildings-3d", () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+
+        map.on("mouseleave", "buildings-3d", () => {
           map.getCanvas().style.cursor = "";
         });
 
@@ -879,14 +1015,21 @@ export default function BuildingCollapseMap({
 
         const features = result.data.features
           .filter(isBuildingFeature)
-          .map((feature, index): BuildingFeature => ({
-            ...feature,
-            properties: {
-              ...(feature.properties ?? {}),
-              id: stableId(feature, index),
-              affected: false,
-            },
-          }));
+          .map((feature, index): BuildingFeature => {
+            const id = stableId(feature, index);
+            const isSelected =
+              selectedIdRef.current !== null &&
+              id === selectedIdRef.current;
+            return {
+              ...feature,
+              properties: {
+                ...(feature.properties ?? {}),
+                id,
+                affected: false,
+                selected: isSelected,
+              },
+            };
+          });
 
         if (cancelled) return;
 
@@ -973,29 +1116,105 @@ export default function BuildingCollapseMap({
         aria-label="Interactive Chandigarh building-collapse simulation map"
       />
 
-      <div className="absolute bottom-4 left-4 z-10 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-sm text-white shadow-lg">
+      {/* Bottom-left: Building count */}
+      <div className="absolute bottom-4 left-4 z-10 rounded-lg border border-slate-700/80 bg-slate-950/90 backdrop-blur-md px-3 py-2 text-sm text-white shadow-lg">
         {loading
           ? "Loading buildings..."
           : `${buildingCount} buildings loaded`}
       </div>
 
-      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-xs text-white shadow-lg">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />
-          Buildings
-        </span>
+      {/* Top-left: Legend + 3D controls */}
+      <div className="absolute left-4 top-4 z-10 flex flex-col gap-2">
+        {/* Legend */}
+        <div className="flex flex-wrap gap-2 rounded-lg border border-slate-700/80 bg-slate-950/90 backdrop-blur-md px-3 py-2 text-xs text-white shadow-lg">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />
+            Buildings
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm bg-orange-400" />
+            Potentially affected
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />
+            Selected
+          </span>
+          {/* 3D Toggle */}
+          <button
+            type="button"
+            onClick={toggle3D}
+            className={`ml-1 rounded px-2 py-0.5 text-[11px] font-semibold transition ${
+              is3D
+                ? "bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.55)]"
+                : "bg-slate-700 text-slate-200 hover:bg-slate-600"
+            }`}
+          >
+            {is3D ? "3D On" : "3D"}
+          </button>
+        </div>
 
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-orange-400" />
-          Potentially affected
-        </span>
+        {/* 3D Controls Card — shown only in 3D mode */}
+        {is3D && (
+          <div className="w-72 rounded-xl border border-slate-600/70 bg-black/75 backdrop-blur-md px-4 py-3 text-white shadow-2xl">
+            <p className="mb-3 text-[10px] leading-snug text-slate-400">
+              Use fill-extrusion-rounded-corner-distance to round the corners of extruded polygons.
+            </p>
 
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />
-          Selected
-        </span>
+            {/* Corner radius slider */}
+            <div className="mb-3">
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-slate-200">Corner radius (m)</span>
+                <span className="min-w-[2rem] text-right font-semibold text-white">{cornerRadius}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={15}
+                step={0.5}
+                value={cornerRadius}
+                onChange={(e) => setCornerRadius(Number(e.target.value))}
+                className="h-1.5 w-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            {/* Height multiplier slider */}
+            <div className="mb-3">
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-slate-200">Height multiplier</span>
+                <span className="min-w-[2rem] text-right font-semibold text-white">{heightMultiplier.toFixed(1)}×</span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={3.0}
+                step={0.1}
+                value={heightMultiplier}
+                onChange={(e) => setHeightMultiplier(Number(e.target.value))}
+                className="h-1.5 w-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            {/* Opacity slider */}
+            <div>
+              <div className="mb-1 flex items-center justify-between text-xs">
+                <span className="text-slate-200">Opacity</span>
+                <span className="min-w-[2rem] text-right font-semibold text-white">{Math.round(extrusionOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0.2}
+                max={1.0}
+                step={0.01}
+                value={extrusionOpacity}
+                onChange={(e) => setExtrusionOpacity(Number(e.target.value))}
+                className="h-1.5 w-full cursor-pointer accent-blue-500"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Bottom-right: City overview button */}
       <button
         type="button"
         onClick={showCity}

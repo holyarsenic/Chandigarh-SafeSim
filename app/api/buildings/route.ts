@@ -187,9 +187,9 @@ function getBuildingName(
 
   const buildingLabel = building
     ? buildingLabels[building] ??
-      (building === "yes"
-        ? "Building"
-        : building.replace(/_/g, " "))
+    (building === "yes"
+      ? "Building"
+      : building.replace(/_/g, " "))
     : "Building";
 
   return {
@@ -270,6 +270,8 @@ export async function GET() {
     return NextResponse.json(cachedData.data);
   }
 
+  // --- Try Overpass servers first ---
+
   const [south, west, north, east] = BOUNDS.split(",").map(Number);
 
   const query = `
@@ -341,6 +343,66 @@ export async function GET() {
       errors.push(`${server}: ${message}`);
       console.error("Building data request failed:", server, message);
     }
+  }
+
+
+  // --- All Overpass servers failed — serve the bundled local dataset ---
+  try {
+    console.warn(
+      "All Overpass servers unavailable. Falling back to bundled dataset.",
+      errors
+    );
+
+    const { readFileSync } = await import("fs");
+    const { join } = await import("path");
+
+    const filePath = join(
+      process.cwd(),
+      "data",
+      "chandigarh-buildings.json"
+    );
+
+    const raw = readFileSync(filePath, "utf-8");
+
+    // The local file is a raw GeoJSON FeatureCollection.
+    const geojson = JSON.parse(raw) as {
+      type: "FeatureCollection";
+      features: BuildingFeature[];
+    };
+
+    if (
+      geojson.type === "FeatureCollection" &&
+      Array.isArray(geojson.features) &&
+      geojson.features.length > 0
+    ) {
+      // Convert raw GeoJSON into the API's expected response format.
+      const localData: BuildingsResponse = {
+        success: true,
+        count: geojson.features.length,
+        data: geojson,
+      };
+
+      cachedData = {
+        data: localData,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+
+      console.log(
+        `Serving ${localData.count} buildings from bundled dataset.`
+      );
+
+      return NextResponse.json(localData);
+    }
+
+    throw new Error("Local GeoJSON contains no building features.");
+  } catch (localError) {
+    const msg =
+      localError instanceof Error
+        ? localError.message
+        : String(localError);
+
+    console.error("Failed to read bundled dataset:", msg);
+    errors.push(`local-dataset: ${msg}`);
   }
 
   return NextResponse.json(
