@@ -506,7 +506,7 @@ export default function EmergencyServicesPanel({
   const refresh = () => setRetryCount((count) => count + 1);
 
   return (
-    <section className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
+    <section className="mt-4 border-2 border-emerald-200 border-r-4 border-r-emerald-600 border-b-4 border-b-emerald-600 bg-white p-4">
       <div className="mb-3 flex items-center gap-3">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
           <Hospital size={19} />

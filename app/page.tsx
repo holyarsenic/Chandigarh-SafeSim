@@ -382,7 +382,7 @@ export default function Home() {
             />
           </div>
 
-          <div>
+          <div className="hidden md:block">
             <h1 className="text-base font-bold tracking-tight">
               Chandigarh SafeSim
             </h1>
@@ -397,7 +397,7 @@ export default function Home() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="View Chandigarh-SafeSim on GitHub"
-            className="hidden sm:inline-flex">
+            className="inline-flex">
             <Button>
               <Image
                   src="https://github.githubassets.com/favicons/favicon.svg"
@@ -407,7 +407,7 @@ export default function Home() {
                   unoptimized
                   className="brightness-0 invert"
                 />
-                <span>GitHub</span>
+                <span className="hidden md:flex">GitHub</span>
             </Button>
           </a>
 
@@ -668,7 +668,7 @@ export default function Home() {
           />
 
           {/* Safety recommendations */}
-          <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
+          <div className="mt-4 border-4 border-violet-200 border-r-violet-900 border-b-violet-900 bg-white p-4">
             <div className="mb-3 flex items-center gap-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
                 <Sparkles size={18} />

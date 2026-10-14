@@ -28,7 +28,7 @@ export default function Button({
       whileHover={{ scale: 1.03, rotate: 1 }}
       whileTap={{ scale: 0.97, rotate: 0 }}
       transition={{ type: "spring", stiffness: 500, damping: 18 }}
-      className={`flex h-9 w-auto items-center gap-2 border-2 border-background bg-background px-3 text-background shadow-[0_3px_0_#64B5F6] hover:bg-background/90 active:shadow-none cursor-pointer ${className}`}
+      className={`flex  w-auto items-center gap-2 border-2 border-background bg-background px-3 text-background shadow-[0_3px_0_#64B5F6] hover:bg-background/90 active:shadow-none cursor-pointer ${className}`}
     >
       <span className="flex gap-2 whitespace-nowrap text-sm font-bold font-['Gochi_Hand',cursive] text-foreground">
         {children ?? label}
