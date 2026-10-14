@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Doc/assets/banner.svg" alt="Chandigarh SafeSim" width="100%"/>
+<img src="doc/assets/banner.svg" alt="Chandigarh SafeSim" width="100%"/>
 
 <br/>
 
@@ -365,7 +365,7 @@ Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
 
 Map data is provided by [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors under the ODbL. Basemap tiles are provided by [CARTO](https://carto.com/attributions).
 
-<img src="Doc/assets/divider.svg" width="100%" alt=""/>
+<img src="doc/assets/divider.svg" width="100%" alt=""/>
 
 <div align="center">
   <sub>Built for safer cities, starting with Chandigarh.</sub>
