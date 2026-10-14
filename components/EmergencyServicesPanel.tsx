@@ -37,6 +37,8 @@ type EmergencyGuidance = {
   ifTrapped: string[];
   precautions: string[];
   nextSteps: string[];
+  recommendedFacilityId: string | null;
+  destinationReason: string;
 };
 
 type NearestFacility = {
@@ -51,6 +53,10 @@ type NearestFacility = {
   warning?: string;
 };
 
+type RecommendedDestination = NearestFacility & {
+  reason: string;
+};
+
 type GuidanceResponse = {
   success?: boolean;
   provider?: "gemma" | "built-in";
@@ -58,6 +64,7 @@ type GuidanceResponse = {
   emergencyNumber?: string;
   guidance?: EmergencyGuidance;
   nearestFacility?: NearestFacility | null;
+  recommendedDestination?: RecommendedDestination | null;
   facilityNotice?: string | null;
   disclaimer?: string;
   error?: string;
@@ -73,7 +80,9 @@ type GuidanceState = {
   key: string;
   data: EmergencyGuidance | null;
   nearestFacility: NearestFacility | null;
+  recommendedDestination: RecommendedDestination | null;
   provider: "gemma" | "built-in" | null;
+  disclaimer: string | null;
   error: string | null;
 };
 
@@ -88,19 +97,15 @@ function formatDistance(meters: number): string {
     return "Distance unavailable";
   }
 
-  if (meters < 1000) {
-    return `${Math.round(meters)} m`;
-  }
-
-  return `${(meters / 1000).toFixed(2)} km`;
+  return meters < 1000
+    ? `${Math.round(meters)} m`
+    : `${(meters / 1000).toFixed(2)} km`;
 }
 
 function getFacilityIcon(type?: string | null) {
   const value = (type ?? "").toLowerCase();
 
-  if (value.includes("fire")) {
-    return Flame;
-  }
+  if (value.includes("fire")) return Flame;
 
   if (
     value.includes("hospital") ||
@@ -127,9 +132,7 @@ function getDirectionsUrl(facility: EmergencyFacility): string {
 function isEmergencyFacility(
   value: unknown
 ): value is EmergencyFacility {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
+  if (typeof value !== "object" || value === null) return false;
 
   const item = value as Partial<EmergencyFacility>;
 
@@ -139,26 +142,32 @@ function isEmergencyFacility(
     item.location.length === 2 &&
     typeof item.location[0] === "number" &&
     Number.isFinite(item.location[0]) &&
+    item.location[0] >= -180 &&
+    item.location[0] <= 180 &&
     typeof item.location[1] === "number" &&
     Number.isFinite(item.location[1]) &&
+    item.location[1] >= -90 &&
+    item.location[1] <= 90 &&
     typeof item.straightLineMeters === "number" &&
-    Number.isFinite(item.straightLineMeters)
+    Number.isFinite(item.straightLineMeters) &&
+    item.straightLineMeters >= 0
   );
 }
 
 function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) &&
-    value.every((item) => typeof item === "string")
+    value.length > 0 &&
+    value.every(
+      (item) => typeof item === "string" && item.trim().length > 0
+    )
   );
 }
 
 function isEmergencyGuidance(
   value: unknown
 ): value is EmergencyGuidance {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
+  if (typeof value !== "object" || value === null) return false;
 
   const item = value as Partial<EmergencyGuidance>;
 
@@ -167,7 +176,11 @@ function isEmergencyGuidance(
     isStringArray(item.evacuationInstructions) &&
     isStringArray(item.ifTrapped) &&
     isStringArray(item.precautions) &&
-    isStringArray(item.nextSteps)
+    isStringArray(item.nextSteps) &&
+    (typeof item.recommendedFacilityId === "string" ||
+      item.recommendedFacilityId === null) &&
+    typeof item.destinationReason === "string" &&
+    item.destinationReason.trim().length > 0
   );
 }
 
@@ -192,6 +205,53 @@ function GuidanceList({
         <p className="mt-1 text-xs text-slate-500">
           No additional instructions provided.
         </p>
+      )}
+    </div>
+  );
+}
+
+function FacilityCard({
+  facility,
+  heading,
+  reason,
+}: {
+  facility: NearestFacility | RecommendedDestination;
+  heading: string;
+  reason?: string;
+}) {
+  return (
+    <div className="mt-2 rounded-md border border-slate-200 bg-white p-3">
+      <p className="text-xs font-semibold text-slate-900">
+        {facility.name}
+      </p>
+
+      <p className="mt-1 text-xs text-slate-600">
+        {facility.type.replaceAll("_", " ")} ·{" "}
+        {facility.distanceLabel || formatDistance(facility.straightLineMeters)}
+        {" "} (straight-line distance)
+      </p>
+
+      {reason && (
+        <p className="mt-2 text-xs leading-5 text-slate-700">
+          {reason}
+        </p>
+      )}
+
+      {facility.warning && (
+        <p className="mt-2 text-xs leading-5 text-amber-800">
+          {facility.warning}
+        </p>
+      )}
+
+      {facility.directionsUrl && (
+        <a
+          href={facility.directionsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+        >
+          {heading} <ExternalLink size={12} />
+        </a>
       )}
     </div>
   );
@@ -273,6 +333,16 @@ export default function EmergencyServicesPanel({
       ? guidanceState.nearestFacility
       : null;
 
+  const recommendedDestination =
+    guidanceState?.key === guidanceRequestKey
+      ? guidanceState.recommendedDestination
+      : null;
+
+  const guidanceDisclaimer =
+    guidanceState?.key === guidanceRequestKey
+      ? guidanceState.disclaimer
+      : null;
+
   const guidanceLoading =
     guidanceRequestKey !== null &&
     guidanceLoadingKey === guidanceRequestKey &&
@@ -280,15 +350,17 @@ export default function EmergencyServicesPanel({
 
   // Load nearby emergency facilities.
   useEffect(() => {
-    if (!location || !facilitiesRequestKey) {
-      return;
-    }
+    if (!location || !facilitiesRequestKey) return;
 
     const [longitude, latitude] = location;
 
     if (
       !Number.isFinite(longitude) ||
-      !Number.isFinite(latitude)
+      !Number.isFinite(latitude) ||
+      longitude < -180 ||
+      longitude > 180 ||
+      latitude < -90 ||
+      latitude > 90
     ) {
       return;
     }
@@ -347,8 +419,7 @@ export default function EmergencyServicesPanel({
         const validFacilities = items.filter(isEmergencyFacility);
 
         validFacilities.sort(
-          (a, b) =>
-            a.straightLineMeters - b.straightLineMeters
+          (a, b) => a.straightLineMeters - b.straightLineMeters
         );
 
         if (controller.signal.aborted) return;
@@ -359,12 +430,7 @@ export default function EmergencyServicesPanel({
           error: null,
         });
       } catch (err: unknown) {
-        if (
-          err instanceof Error &&
-          err.name === "AbortError"
-        ) {
-          return;
-        }
+        if (err instanceof Error && err.name === "AbortError") return;
 
         if (!controller.signal.aborted) {
           setFacilitiesState({
@@ -388,7 +454,6 @@ export default function EmergencyServicesPanel({
   useEffect(() => {
     if (
       !location ||
-      !locationKey ||
       !guidanceRequestKey ||
       !facilitiesReady
     ) {
@@ -397,7 +462,6 @@ export default function EmergencyServicesPanel({
 
     const controller = new AbortController();
     const requestKey = guidanceRequestKey;
-
     const [longitude, latitude] = location;
 
     async function fetchGuidance(): Promise<void> {
@@ -464,23 +528,23 @@ export default function EmergencyServicesPanel({
           key: requestKey,
           data: result.guidance,
           nearestFacility: result.nearestFacility ?? null,
+          recommendedDestination:
+            result.recommendedDestination ?? null,
           provider: result.provider ?? "built-in",
+          disclaimer: result.disclaimer ?? null,
           error: null,
         });
       } catch (err: unknown) {
-        if (
-          err instanceof Error &&
-          err.name === "AbortError"
-        ) {
-          return;
-        }
+        if (err instanceof Error && err.name === "AbortError") return;
 
         if (!controller.signal.aborted) {
           setGuidanceState({
             key: requestKey,
             data: null,
             nearestFacility: null,
+            recommendedDestination: null,
             provider: null,
+            disclaimer: null,
             error:
               err instanceof Error
                 ? err.message
@@ -495,7 +559,6 @@ export default function EmergencyServicesPanel({
     return () => controller.abort();
   }, [
     location,
-    locationKey,
     guidanceRequestKey,
     facilitiesReady,
     currentFacilities,
@@ -607,9 +670,7 @@ export default function EmergencyServicesPanel({
         <>
           <p className="mb-3 text-xs text-slate-600">
             {currentFacilities.length} mapped{" "}
-            {currentFacilities.length === 1
-              ? "facility"
-              : "facilities"}{" "}
+            {currentFacilities.length === 1 ? "facility" : "facilities"}{" "}
             found. Sorted by straight-line distance.
           </p>
 
@@ -634,8 +695,10 @@ export default function EmergencyServicesPanel({
                       </p>
 
                       <p className="mt-1 text-[10px] capitalize text-slate-500">
-                        {(facility.type ?? "Emergency service")
-                          .replaceAll("_", " ")}
+                        {(facility.type ?? "Emergency service").replaceAll(
+                          "_",
+                          " "
+                        )}
                       </p>
 
                       <div className="mt-2 flex flex-wrap items-center gap-1 text-xs font-semibold text-emerald-700">
@@ -664,7 +727,6 @@ export default function EmergencyServicesPanel({
         </>
       )}
 
-      {/* New emergency guidance output */}
       {location && facilitiesReady && (
         <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
           <div className="mb-3 flex items-center gap-2">
@@ -676,9 +738,7 @@ export default function EmergencyServicesPanel({
 
             {guidanceProvider && (
               <span className="ml-auto rounded-full bg-white px-2 py-1 text-[9px] font-semibold text-indigo-700">
-                {guidanceProvider === "gemma"
-                  ? "Gemma"
-                  : "Built-in guidance"}
+                {guidanceProvider === "gemma" ? "Gemma" : "Built-in guidance"}
               </span>
             )}
           </div>
@@ -693,6 +753,7 @@ export default function EmergencyServicesPanel({
               <p className="text-xs leading-5 text-amber-900">
                 Guidance could not be generated: {guidanceError}
               </p>
+
               <button
                 type="button"
                 onClick={refresh}
@@ -706,10 +767,7 @@ export default function EmergencyServicesPanel({
             <div className="space-y-4">
               <div className="rounded-md border border-red-200 bg-red-50 p-3">
                 <p className="text-xs font-bold text-red-900">
-                  <AlertTriangle
-                    size={14}
-                    className="mr-1 inline"
-                  />
+                  <AlertTriangle size={14} className="mr-1 inline" />
                   Immediate actions
                 </p>
 
@@ -725,62 +783,47 @@ export default function EmergencyServicesPanel({
                 items={guidance.evacuationInstructions}
               />
 
-              <GuidanceList
-                title="If trapped"
-                items={guidance.ifTrapped}
-              />
+              <GuidanceList title="If trapped" items={guidance.ifTrapped} />
 
-              <GuidanceList
-                title="Precautions"
-                items={guidance.precautions}
-              />
+              <GuidanceList title="Precautions" items={guidance.precautions} />
 
-              <GuidanceList
-                title="Next steps"
-                items={guidance.nextSteps}
-              />
+              <GuidanceList title="Next steps" items={guidance.nextSteps} />
 
+              {/* Gemma's possible assistance location */}
+              <div>
+                <p className="text-xs font-bold text-slate-900">
+                  Possible assistance location
+                </p>
+
+                {recommendedDestination ? (
+                  <FacilityCard
+                    facility={recommendedDestination}
+                    heading="View map directions"
+                    reason={recommendedDestination.reason}
+                  />
+                ) : (
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    No facility was recommended. This does not mean there
+                    is no help nearby. Call 112 in an actual emergency and
+                    follow responders&apos; instructions.
+                  </p>
+                )}
+              </div>
+
+              {/* Nearest is shown separately from the model's selection */}
               <div>
                 <p className="text-xs font-bold text-slate-900">
                   Nearest mapped emergency facility
                 </p>
 
                 {nearestFacility ? (
-                  <div className="mt-2 rounded-md border border-slate-200 bg-white p-3">
-                    <p className="text-xs font-semibold text-slate-900">
-                      {nearestFacility.name}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-600">
-                      {nearestFacility.type.replaceAll("_", " ")}{" "}
-                      ·{" "}
-                      {nearestFacility.distanceLabel ||
-                        formatDistance(
-                          nearestFacility.straightLineMeters
-                        )}
-                    </p>
-
-                    {nearestFacility.warning && (
-                      <p className="mt-2 text-xs leading-5 text-amber-800">
-                        {nearestFacility.warning}
-                      </p>
-                    )}
-
-                    {nearestFacility.directionsUrl && (
-                      <a
-                        href={nearestFacility.directionsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
-                      >
-                        Open directions <ExternalLink size={12} />
-                      </a>
-                    )}
-                  </div>
+                  <FacilityCard
+                    facility={nearestFacility}
+                    heading="Open directions"
+                  />
                 ) : (
                   <p className="mt-1 text-xs leading-5 text-slate-600">
-                    No nearby facility was identified from the mapped
-                    data. Contact emergency services for assistance.
+                    No nearby facility was identified in the mapped data.
                   </p>
                 )}
               </div>
@@ -796,6 +839,12 @@ export default function EmergencyServicesPanel({
                   112 — India emergency services
                 </a>
               </div>
+
+              {guidanceDisclaimer && (
+                <p className="text-[10px] leading-4 text-slate-600">
+                  {guidanceDisclaimer}
+                </p>
+              )}
             </div>
           ) : null}
         </div>
@@ -807,12 +856,12 @@ export default function EmergencyServicesPanel({
           className="mt-0.5 shrink-0 text-amber-700"
         />
         <p className="text-[10px] leading-4 text-amber-900">
-          Distances are approximate straight-line measurements, not
-          road distances or travel times. OpenStreetMap data may be
-          incomplete or outdated. AI-generated guidance does not
-          verify facility availability, building stability, or road
-          safety. For an actual emergency in India, call 112 and
-          follow emergency responders&apos; instructions.
+          Distances are approximate straight-line measurements, not road
+          distances or travel times. OpenStreetMap data may be incomplete
+          or outdated. AI-generated guidance does not verify facility
+          availability, building stability, or road safety. For an actual
+          emergency in India, call 112 and follow emergency responders&apos;
+          instructions.
         </p>
       </div>
     </section>

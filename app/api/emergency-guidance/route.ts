@@ -1,6 +1,7 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
+
 export const maxDuration = 25;
 
 const FacilitySchema = z.object({
@@ -31,18 +32,19 @@ const GuidanceSchema = z.object({
   ifTrapped: z.array(z.string().min(1).max(500)).min(1).max(5),
   precautions: z.array(z.string().min(1).max(500)).min(1).max(5),
   nextSteps: z.array(z.string().min(1).max(500)).min(1).max(5),
+
+  // Must refer to a facility supplied in the request, or null.
+  recommendedFacilityId: z.string().max(100).nullable(),
+  destinationReason: z.string().min(1).max(500),
 });
 
 type Guidance = z.infer<typeof GuidanceSchema>;
-
 type Facility = z.infer<typeof FacilitySchema>;
 
 function getNearestFacility(facilities: Facility[]) {
-  if (facilities.length === 0) return null;
-
   return [...facilities].sort(
     (a, b) => a.straightLineMeters - b.straightLineMeters,
-  )[0];
+  )[0] ?? null;
 }
 
 function distanceLabel(meters: number) {
@@ -51,65 +53,84 @@ function distanceLabel(meters: number) {
     : `${(meters / 1000).toFixed(2)} km`;
 }
 
+// Tolerate accidental Markdown fences while still validating the result  against the complete Zod schema below.
+function parseGemmaJson(raw: string): unknown {
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
+  return JSON.parse(cleaned);
+}
+
 function getFallbackGuidance(
   scenario: "building-collapse" | "major-fire",
 ): Guidance {
+  const common = {
+    recommendedFacilityId: null,
+    destinationReason:
+      "No facility has been verified as a safe destination. Call 112 and follow emergency responders' directions.",
+  };
+
   if (scenario === "major-fire") {
     return {
+      ...common,
       immediateActions: [
-        "If this is a real emergency in India, call 112. Give the building name, location, and known hazards.",
-        "Leave the fire area using a safe, accessible exit if one is available. Stay low if you must move through smoke.",
-        "Do not use lifts during a fire. Do not enter smoke-filled rooms or return for belongings.",
+        "In India, call 112 for an actual emergency and report the location and known hazards.",
+        "Leave by an accessible exit only if you can do so without moving through fire or dangerous smoke.",
+        "Stay low if you must pass through smoke. Never use a lift during a fire.",
       ],
       evacuationInstructions: [
-        "Move away from the building and visible smoke when it is safe to do so.",
-        "Follow marked emergency exits, evacuation signs, and instructions from firefighters.",
-        "Move to an assembly point only if it is designated and safe. Do not assume a nearby building is a safe shelter.",
-        "Do not approach a mapped emergency facility through fire, smoke, blocked roads, or other hazards.",
+        "Move away from the fire and smoke when safe.",
+        "Follow marked exits and instructions from firefighters.",
+        "Do not enter smoke-filled areas or cross fire to reach a mapped facility.",
+        "Use a designated assembly point only when authorities identify it as safe.",
       ],
       ifTrapped: [
-        "Call 112 and tell responders your exact location, floor, and whether anyone is injured.",
-        "If an exit is blocked by fire or smoke, do not force your way through it. Move to a safer room away from smoke if possible.",
-        "Close doors between you and the smoke if possible, signal your location, and follow emergency operator instructions.",
+        "Call 112 and provide your exact location, floor, and injuries.",
+        "Do not force your way through fire or smoke. Move away from smoke if possible.",
+        "Close doors between you and smoke if possible, signal your location, and follow dispatcher instructions.",
       ],
       precautions: [
         "Avoid smoke, flames, electrical hazards, and falling debris.",
-        "Do not re-enter the building until authorities confirm it is safe.",
+        "Do not return until authorities confirm the building is safe.",
       ],
       nextSteps: [
-        "Tell emergency responders if anyone is missing, injured, or trapped.",
-        "Use the mapped facility list only as location information; opening status and emergency capacity are not verified.",
+        "Tell responders if anyone is missing, injured, or trapped.",
+        "Treat mapped facilities as unverified until responders confirm where you should go.",
       ],
     };
   }
 
   return {
+    ...common,
     immediateActions: [
-      "If people are injured, trapped, or in immediate danger in India, call 112.",
-      "Move away from visibly damaged structures, leaning walls, hanging debris, and areas where material is falling, if you can do so without crossing another hazard.",
-      "Do not enter or re-enter a damaged building. Watch for dust, falling objects, fire, and damaged electrical wires.",
+      "Call 112 in India if anyone is injured, trapped, or in immediate danger.",
+      "Move away from visibly damaged structures and falling debris if you can do so safely.",
+      "Do not enter or re-enter a damaged building. Avoid exposed wires and other hazards.",
     ],
     evacuationInstructions: [
-      "If your current structure appears unstable and an exit is accessible without passing through falling debris, leave carefully and move into an open area away from buildings, walls, poles, and overhead hazards.",
-      "Do not run toward another building simply because it is nearby. A mapped building has not been verified as structurally safe.",
-      "Follow police, fire services, and disaster-response personnel instructions. Do not cross debris or blocked roads to reach a facility.",
-      "Use the nearest-facility information as a starting point for contacting responders, not as proof that the facility is safe to enter.",
+      "If the structure appears unstable, use an accessible exit only if reaching it does not expose you to falling debris or another hazard.",
+      "If you can leave safely, move to an open area away from buildings, walls, poles, and overhead hazards.",
+      "Do not enter another building just because it is nearby or appears undamaged.",
+      "Follow police, fire services, and disaster-response personnel.",
     ],
     ifTrapped: [
-      "Call 112 if possible and share your exact location, floor, visible injuries, and nearby hazards.",
-      "Avoid unnecessary movement if debris may shift. Protect your head and neck from falling material.",
-      "If you are trapped, make noise or use your phone to signal rescuers when safe. Conserve your phone battery.",
-      "Do not light matches or use a flame where gas leakage may be present.",
+      "Call 112 if possible and give your exact location, floor, injuries, and nearby hazards.",
+      "Avoid unnecessary movement if debris may shift; protect your head and neck.",
+      "Signal rescuers using your phone or by making noise when safe. Conserve battery.",
+      "Do not move heavy debris or use flames if a gas leak is possible.",
     ],
     precautions: [
       "Stay away from visibly cracked, leaning, or partially collapsed structures.",
-      "Do not attempt to lift heavy debris or conduct an untrained rescue.",
-      "Be alert for aftershocks or secondary collapse if an earthquake has occurred.",
+      "Do not attempt an untrained rescue or lift heavy debris.",
+      "Be alert for aftershocks and secondary collapse if an earthquake occurred.",
     ],
     nextSteps: [
-      "Give responders the exact location and the number of people who may be injured or trapped.",
+      "Tell responders the location and number of people who may be injured or trapped.",
       "Wait for qualified responders to assess damaged structures before returning.",
-      "Seek medical assistance for injuries and follow official evacuation instructions.",
+      "Seek medical assistance and follow official evacuation instructions.",
     ],
   };
 }
@@ -132,18 +153,45 @@ async function generateWithGemma(prompt: string): Promise<string> {
       messages: [
         {
           role: "system",
-          content: [
-            "You provide cautious emergency information, professional rescue instructions.",
-            "Use only supplied facts and make users to tell how escape using nearest safest location out of harmed placed. Never invent safe buildings, shelters, exits, roads, routes, distances, travel times, or facility availability.",
-            "Do not claim that a facility is safe merely because it is nearby.",
-            "Do not instruct people to travel through smoke, fire, debris, unstable structures, or blocked routes.",
-            "For fire, prioritize leaving the fire area through a safe accessible exit, avoiding smoke, and following firefighters.",
-            "For structural collapse, prioritize avoiding unstable structures and falling debris when a safe exit is available.",
-            "For trapped people, advise calling emergency services and following dispatcher instructions. Never advise moving heavy debris.",
-            "For emergencies in India, say to call 112.",
-            "Return only JSON with these fields: immediateActions, evacuationInstructions, ifTrapped, precautions, nextSteps.",
-            "Each field must be an array of concise strings.",
-          ].join(" "),
+          content: `
+You are a cautious emergency-information assistant for a Chandigarh
+urban-safety prototype. Your response may be used in a stressful situation.
+
+Use only the supplied facts. Never invent exits, routes, shelters, buildings,
+facility capabilities, opening status, road conditions, or travel times.
+
+For fire, prioritize leaving the affected area through an accessible exit
+only when doing so does not require crossing dangerous fire or smoke.
+For structural collapse, avoid unstable structures and falling debris.
+For trapped people, advise calling emergency services and following
+dispatcher instructions. Never advise moving heavy debris.
+For an actual emergency in India, say to call 112.
+
+DESTINATION RULES:
+1. You may select recommendedFacilityId ONLY from the exact facility IDs
+   supplied in the user prompt.
+2. Select a facility only as a possible contact/assistance option when
+   relevant to the scenario; proximity alone does not establish suitability.
+3. If no facility is appropriate, return null.
+4. Never claim that a facility or route is safe, open, available, or capable
+   of handling this emergency. These facts have not been verified.
+5. destinationReason must clearly explain the limitations. Do not tell a
+   person to travel to a facility through hazards.
+6. Do not invent a safe destination. Tell users to call 112 and follow
+   responders' directions when immediate danger exists.
+
+Return only valid JSON with exactly these fields:
+{
+  "immediateActions": ["..."],
+  "evacuationInstructions": ["..."],
+  "ifTrapped": ["..."],
+  "precautions": ["..."],
+  "nextSteps": ["..."],
+  "recommendedFacilityId": "an exact supplied ID or null",
+  "destinationReason": "..."
+}
+Each list must contain concise strings. Use simple English.
+          `.trim(),
         },
         { role: "user", content: prompt },
       ],
@@ -197,15 +245,14 @@ export async function POST(request: Request) {
   const nearest = getNearestFacility(facilities);
 
   const prompt = `
-Create concise emergency guidance for a Chandigarh urban-safety prototype.
-
 Scenario: ${scenario}
-Selected location: ${buildingName}
+Selected building/location: ${buildingName}
 Coordinates: ${location.latitude}, ${location.longitude}
 
-Mapped emergency facilities:
+Supplied mapped facilities:
 ${JSON.stringify(
   facilities.map((facility) => ({
+    id: facility.id,
     name: facility.name,
     type: facility.type,
     straightLineMeters: facility.straightLineMeters,
@@ -214,31 +261,40 @@ ${JSON.stringify(
   2,
 )}
 
-Return JSON containing:
-- immediateActions: actions to take now
-- evacuationInstructions: how to move away from danger
-- ifTrapped: what to do if an exit is blocked or a person is trapped
-- precautions: hazards to avoid
-- nextSteps: practical follow-up actions
-
-Do not invent a destination, safe building, exit, route, facility capability, or opening status.
-Do not treat the nearest facility as a safe evacuation destination.
-Use simple English. Prioritize calling 112 in an actual emergency.
-Return only valid JSON.
-`;
+Create concise, scenario-specific emergency guidance.
+Choose recommendedFacilityId only if a supplied facility is relevant as
+a possible assistance/contact option. Otherwise return null.
+Do not equate nearest with safest. Explain that straight-line distances
+are not route distances and that facility status and route safety are
+unverified. Never instruct people to travel through hazards.
+In immediate danger, prioritize calling 112 and following responders.
+  `.trim();
 
   let guidance: Guidance;
   let provider: "gemma" | "built-in" = "built-in";
 
   try {
     const raw = await generateWithGemma(prompt);
-    const output = GuidanceSchema.safeParse(JSON.parse(raw));
+    const output = GuidanceSchema.safeParse(parseGemmaJson(raw));
 
     if (!output.success) {
+      console.warn("Invalid Gemma guidance schema:", output.error.flatten());
       throw new Error("Gemma returned guidance in an invalid format.");
     }
 
-    guidance = output.data;
+    const candidate = output.data;
+
+    // Prevent the model from referencing an ID that was not supplied.
+    if (
+      candidate.recommendedFacilityId !== null &&
+      !facilities.some(
+        (facility) => facility.id === candidate.recommendedFacilityId,
+      )
+    ) {
+      throw new Error("Gemma selected an unknown facility ID.");
+    }
+
+    guidance = candidate;
     provider = "gemma";
   } catch (error) {
     console.warn(
@@ -248,6 +304,12 @@ Return only valid JSON.
 
     guidance = getFallbackGuidance(scenario);
   }
+
+  const recommendedFacility = guidance.recommendedFacilityId
+    ? facilities.find(
+        (facility) => facility.id === guidance.recommendedFacilityId,
+      ) ?? null
+    : null;
 
   return NextResponse.json({
     success: true,
@@ -259,6 +321,27 @@ Return only valid JSON.
     },
     emergencyNumber: "112",
     guidance,
+
+    // This is a possible assistance option, not a verified safe destination.
+    recommendedDestination: recommendedFacility
+      ? {
+          id: recommendedFacility.id,
+          name: recommendedFacility.name,
+          type: recommendedFacility.type,
+          latitude: recommendedFacility.latitude,
+          longitude: recommendedFacility.longitude,
+          straightLineMeters: recommendedFacility.straightLineMeters,
+          distanceLabel: distanceLabel(
+            recommendedFacility.straightLineMeters,
+          ),
+          directionsUrl: recommendedFacility.directionsUrl,
+          reason: guidance.destinationReason,
+          warning:
+            "This facility is not verified as safe, open, or able to help. Route safety is unknown. Call 112 and follow responders' instructions.",
+        }
+      : null,
+
+    // the AI-recommended destination.
     nearestFacility: nearest
       ? {
           id: nearest.id,
@@ -270,13 +353,15 @@ Return only valid JSON.
           distanceLabel: distanceLabel(nearest.straightLineMeters),
           directionsUrl: nearest.directionsUrl,
           warning:
-            "Nearest by straight-line distance only. Route safety, opening status, and service availability have not been verified.",
+            "Nearest by straight-line distance only. This is not a safety recommendation; route conditions and facility availability are unverified.",
         }
       : null,
-    facilityNotice: nearest
-      ? null
-      : "No mapped emergency facilities were supplied. Call 112 for immediate danger and follow official responder instructions.",
+
+    facilityNotice: facilities.length === 0
+      ? "No mapped facilities were supplied. Call 112 for immediate danger and follow official responder instructions."
+      : null,
+
     disclaimer:
-      "This is planning support, not a live hazard assessment. Follow emergency services and local authorities.",
+      "Prototype planning support only, not a live hazard assessment or certified evacuation plan. Follow emergency services and local authorities.",
   });
 }
